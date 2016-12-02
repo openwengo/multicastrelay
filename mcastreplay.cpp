@@ -3,17 +3,17 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <iostream> 
-#include <string>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <iostream> 
+#include <string>
+#include <fstream>
+
 #include <boost/program_options.hpp>
 
-// compilation: g++ mcastreplay.cpp -I ../boost_1_61_0/ ../boost_1_61_0/bin.v2/libs/program_options/build/gcc-4.8.3/release/link-static/threading-multi/libboost_program_options.a
-
+#define DEFAULT_FILE_CONFIG "mcastreplay.ini"
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
@@ -43,6 +43,73 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
     return res;
 }
 
+int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip)
+{
+	// Option from file info recuperation
+	boost::program_options::options_description file_description("File Options");
+	boost::program_options::variables_map file_boost_map;
+	std::string config_file = DEFAULT_FILE_CONFIG;
+	
+	file_description.add_options()
+	("In.Group", boost::program_options::value<std::string>(&s_ingroup)->default_value(""), "Group In")
+	("In.Ip", boost::program_options::value<std::string>(&s_inip)->default_value(""), "Ip In")
+	("In.Port", boost::program_options::value<int>(&s_inport)->default_value(0), "Port In")
+	("Out.Group", boost::program_options::value<std::string>(&s_outgroup)->default_value(""), "Group Out")
+	("Out.Ip", boost::program_options::value<std::string>(&s_outip)->default_value(""), "Ip Out")
+	("Out.Port", boost::program_options::value<int>(&s_outport)->default_value(0), "Port Out");
+	
+	// Option from Command Line recuperation
+	boost::program_options::options_description description("Command Line Options");
+	boost::program_options::variables_map boost_map;
+	
+	description.add_options()
+	("ingroup", boost::program_options::value<std::string>(&s_ingroup), "Group In")
+	("inip", boost::program_options::value<std::string>(&s_inip), "Ip In")
+	("inport", boost::program_options::value<int>(&s_inport), "Port In")
+	("outgroup", boost::program_options::value<std::string>(&s_outgroup), "Group Out")
+	("outip", boost::program_options::value<std::string>(&s_outip), "Ip Out")
+	("outport", boost::program_options::value<int>(&s_outport), "Port Out")
+	("config", boost::program_options::value<std::string>(&config_file), "Config File Name")
+	("help", "Help Screen");
+	
+	try
+	{
+		boost::program_options::store(boost::program_options::parse_command_line(argc, argv, description), boost_map);
+		boost::program_options::notify(boost_map);
+		std::ifstream file(config_file.c_str(), std::ifstream::in);
+	
+		if (file.fail())
+		{
+			std::cerr << "Opening " << config_file << " failed" << std::endl;
+			return (1);
+		}
+		
+		boost::program_options::store(boost::program_options::parse_config_file(file, file_description), file_boost_map);
+		file.close();
+		boost::program_options::notify(file_boost_map);
+		boost::program_options::store(boost::program_options::parse_command_line(argc, argv, description), boost_map);
+		boost::program_options::notify(boost_map);
+	}
+	catch (const boost::program_options::error &e)
+	{
+		std::cerr << "Exception: " << e.what() << std::endl;
+		return (1);
+	}
+	
+	if (s_ingroup.empty() == true || s_inip.empty() == true || s_inport == 0 || s_outgroup.empty() == true || s_outip.empty() == true || s_outport == 0)
+	{
+		std::cerr << "Group, Ip, Port from In and Out needed to run it" << std::endl;
+		std::cerr << description << std::endl << std::endl << file_description << std::endl;
+		return (1);
+	}
+	else if (boost_map.size() == 1 && boost_map.count("help"))
+	{
+		std::cerr << description << std::endl << std::endl << file_description << std::endl;
+		return (1);
+	}
+	return (0);
+}
+
 int	main(int argc, char **argv)
 {
 	struct in_addr localInterface;
@@ -68,28 +135,13 @@ int	main(int argc, char **argv)
     struct addrinfo *res0 = 0;
     int addr_len;
 	
-	boost::program_options::options_description description("Option");
-	boost::program_options::variables_map boost_map;
-	
-	description.add_options()
-	("ingroup", boost::program_options::value<std::string>(&s_ingroup), "Group Entré")
-	("inip", boost::program_options::value<std::string>(&s_inip), "Ip Entré")
-	("inport", boost::program_options::value<int>(&s_inport), "Port Entré")
-	("outgroup", boost::program_options::value<std::string>(&s_outgroup), "Group Sortie")
-	("outip", boost::program_options::value<std::string>(&s_outip), "Ip Sortie")
-	("outport", boost::program_options::value<int>(&s_outport), "Port Sortie")
-	("help", "Help Screen");
-	
-	boost::program_options::store(boost::program_options::parse_command_line(argc, argv, description), boost_map);
-	boost::program_options::notify(boost_map);
-	
-	if (boost_map.count("help"))
-      std::cout << description << std::endl;
+	if (init(argc, argv, s_ingroup, s_inport, s_inip, s_outgroup, s_outport, s_outip) == 1)
+		return (1);
 	
 	res0 = udp_resolve_host( 0, s_outport, SOCK_DGRAM, AF_INET, AI_PASSIVE );
      if( res0 == 0 ) {
 		 std::cerr << "udp_resolve_host failed" << std::endl;
-		exit(1);
+		return(1);
      }
      memcpy( &my_addr, res0->ai_addr, res0->ai_addrlen );
      addr_len = res0->ai_addrlen;
@@ -100,7 +152,7 @@ int	main(int argc, char **argv)
     sd_out = socket(AF_INET, SOCK_DGRAM, 0);
     if(sd_out < 0) {
       std::cerr << "Opening datagram socket error" << std::endl;
-      exit(1);
+      return(1);
     } else {
       std::cout << "Opening the datagram socket...OK." << std::endl;
     }
@@ -117,13 +169,13 @@ int	main(int argc, char **argv)
       if(setsockopt(sd_out, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
        std::cerr << "Setting SO_REUSEADDR error on sd_out" << std::endl;
        close(sd_out);
-       exit(1);
+       return(1);
       } 
     }
   /* bind  */
   if( bind( sd_out, (struct sockaddr *)&my_addr, addr_len ) < 0 ) {
       std::cerr << "Error binding out socket" << std::endl;
-      exit(1);
+      return(1);
   }
 
     /* Disable loopback so you do not receive your own datagrams.
@@ -149,14 +201,14 @@ int	main(int argc, char **argv)
     localInterface.s_addr = inet_addr(s_outip.c_str());
     if(setsockopt(sd_out, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) < 0) {
       std::cerr << "Setting local out interface error" << std::endl;
-      exit(1);
+      return(1);
     } else {
       std::cout << "Setting the local out interface...OK\n" << std::endl;
     }
     unsigned char ttl = 32;
     if( setsockopt( sd_out, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl) ) < 0 ) {   
       std::cerr << "Setting ttl" << std::endl;
-      exit(1);
+      return(1);
     }
 
     /* Send a message to the multicast group specified by the*/
@@ -183,7 +235,7 @@ int	main(int argc, char **argv)
 
     if(sd_in < 0) {
       std::cerr << "Opening datagram socket error" << std::endl;
-      exit(1);
+      return(1);
     } else {
       std::cout << "Opening datagram socket....OK." << std::endl;
       /* Enable SO_REUSEADDR to allow multiple instances of this */
@@ -193,7 +245,7 @@ int	main(int argc, char **argv)
       if(setsockopt(sd_in, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
        std::cerr << "Setting SO_REUSEADDR error" << std::endl;
        close(sd_in);
-       exit(1);
+       return(1);
       } else {
        std::cout << "Setting SO_REUSEADDR...OK." << std::endl;
       }
@@ -210,7 +262,7 @@ int	main(int argc, char **argv)
     if(bind(sd_in, (struct sockaddr*)&localSock, sizeof(localSock))) {
       std::cerr << "Binding datagram socket in error" << std::endl;
       close(sd_in);
-      exit(1);
+      return(1);
     } else {
       std::cout << "Binding datagram socket in...OK." << std::endl;
     }
@@ -225,7 +277,7 @@ int	main(int argc, char **argv)
     if(setsockopt(sd_in, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&group, sizeof(group)) < 0) {
       std::cerr << "Adding multicast group in error" << std::endl;
       close(sd_in);
-      exit(1);
+      return(1);
     } else {
       std::cout << "Adding multicast group in...OK." << std::endl;
     }
@@ -239,7 +291,7 @@ int	main(int argc, char **argv)
         std::cerr << "Reading datagram im message error" << std::endl;
         close(sd_in);
         close(sd_out);
-        exit(1);
+        return(1);
       } else {
         //printf("Reading datagram message in ...OK.\n");
         std::cout << "r";
@@ -253,4 +305,5 @@ int	main(int argc, char **argv)
       }
 
     }
+	return (0);
 }
