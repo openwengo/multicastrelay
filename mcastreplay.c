@@ -14,9 +14,9 @@
     char databuf_out[16384] = "Multicast test message lol!";
     int datalen_out = sizeof(databuf_out);
 
-    static char s_outgroup[15] = "<ip de diffusion multicast>"; 
-    static int  s_outport = 1234 ;
-    static char s_outip[15] = "<ip de l'interface de sortie multicast>"; 
+    static char s_outgroup[15] = "239.34.56.11"; 
+    static int  s_outport = 1111 ;
+    static char s_outip[15] = "192.168.56.2";
 
     struct sockaddr_in localSock;
     struct ip_mreq group;
@@ -24,9 +24,9 @@
     int datalen_in;
     char databuf_in[16384];
 
-    static char s_ingroup[15] = "<ip multicast de la source>"; 
-    static int  s_inport = 1234 ;
-    static char s_inip[15] = "<ip de l'interface de la source multicast>";
+    static char s_ingroup[15] = "239.34.52.11";
+    static int  s_inport = 1111 ;
+    static char s_inip[15] = "192.168.52.4" ;
  
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
