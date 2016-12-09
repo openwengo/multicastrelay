@@ -60,24 +60,34 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
 
 void	print()
 {
-	std::fstream				fd_packets;
-	std::fstream				fd_octets;
+	std::ofstream				fd_packets;
+	std::ofstream				fd_octets;
+	std::ofstream				fd_debit;
+	static unsigned long int	saved_value;
+	unsigned long int			debit;
 	
-	sleep(SLEEP_DURATION);	
+	sleep(SLEEP_DURATION);
+	debit = ((octets_read - saved_value) * 8) / 60; // get debit = bite per second
 	std::cout << "packets_read: " << packets_read << std::endl;
 	std::cout << "octets_read: " << octets_read << std::endl;
+	std::cout << "debit: " << debit << std::endl;
 	try
 	{
-		fd_packets.open(dest_info_file + "Packets.txt");
-		fd_octets.open(dest_info_file + "Octets.txt");
+		fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
+		fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
+		fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
 		if (fd_packets.fail())
 			std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
 		if (fd_octets.fail())
 			std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
-		fd_packets << packets_read;
+		if (fd_debit.fail())
+			std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
+		fd_packets << packets_read << std::endl;
 		fd_packets.flush();
-		fd_octets << octets_read;
+		fd_octets << octets_read << std::endl;
 		fd_octets.flush();
+		fd_debit << debit << std::endl;
+		fd_debit.flush();
 	}
 	catch (const boost::program_options::error &e)
 	{
@@ -85,6 +95,8 @@ void	print()
 	}
 	fd_packets.close();
 	fd_octets.close();
+	fd_debit.close();
+	saved_value = octets_read;
 	print();
 }
 
@@ -369,10 +381,12 @@ int	main(int argc, char **argv)
       if(sendto(sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0) {
          std::cerr << "Sending datagram message out error" << std::endl;
       } else {
+	
 		int packets_size = packet_size_guessing(databuf_in, datalen_out);
 		int packets_per_read = datalen_out / packets_size;
 		packets_read = packets_read + packets_per_read;
 		octets_read = octets_read + datalen_out;
+		
       }
     }
 	return (0);
