@@ -98,12 +98,6 @@ void	print()
 	fd_debit.close();
 	saved_value = octets_read;
 	print();
-	/*int x = 0;
-	for (std::list<short>::iterator it = pid_list.begin(); it != pid_list.end(); it++)
-	{
-		fd << "PID " << *it << " = " << pkts_per_pids[x] << " packets" << std::endl;
-		++x;
-	}*/
 }
 
 int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl)
@@ -387,47 +381,12 @@ int	main(int argc, char **argv)
       if(sendto(sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0) {
          std::cerr << "Sending datagram message out error" << std::endl;
       } else {
-        //printf("Sending datagram message out...OK\n");
-		//std::cout << " w ";
-		/*for (int i = 0; i != strlen(databuf_in); i++)
-			std::cout << std::bitset<8>(databuf_in[i]) << " ";*/
-		//std::cout << " w: " << databuf_in << " size: " << strlen(databuf_in);
-		/*int len = strlen(databuf_in);
-		if (len > 3)
-		{*/
 	
 		int packets_size = packet_size_guessing(databuf_in, datalen_out);
 		int packets_per_read = datalen_out / packets_size;
 		packets_read = packets_read + packets_per_read;
 		octets_read = octets_read + datalen_out;
 		
-		/*
-		// découpage packets lu par chaque read, creation list de pid et un vector permetant de compter packet par pid
-		int i = 0;
-		for (int x = 0; x != packets_per_read; x++)
-		{
-			short addition;
-			addition = ((databuf_in[(x * packets_size) + 1] << 8) | databuf_in[(x * packets_size) + 2]) & 0x1fff;
-			if ((index = std::find(pid_list.begin(), pid_list.end(), addition)) == pid_list.end())
-			{
-				pid_list.push_back(addition);
-				pkts_per_pids.push_back(1);
-				std::cout << "PIDS list:" << std::endl;
-				for (std::list<short>::iterator pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
-					std::cout << *pid_it << std::endl;
-				int x = std::distance(pid_list.begin(), index);
-				pkts_per_pids[x] = pkts_per_pids[x] + 1;
-			}
-			std::cout << "PID: " << addition << std::endl;
-			while (i != (x * packets_size))
-			{
-				std::cout << std::bitset<8>(databuf_in[i]) << " ";
-				++i;
-				}
-				std::cout << std::endl;
-		}*/
-			//}
-		//}
       }
     }
 	return (0);
