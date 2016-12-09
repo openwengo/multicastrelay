@@ -6,14 +6,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <iostream> 
 #include <string>
 #include <fstream>
+#include <bitset>
+#include <list>
+#include <vector>
+#include <algorithm>
+#include <thread>
 
 #include <boost/program_options.hpp>
+#include <boost/asio.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
+#define SLEEP_DURATION 60
+
+std::list<short> 			pid_list;
+std::vector<int>			pkts_per_pids;
+unsigned long int		packets_read = 0;
+unsigned long int		octets_read = 0;
+std::string					dest_info_file;
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
@@ -43,7 +58,37 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
     return res;
 }
 
-int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip)
+void	print()
+{
+	std::fstream				fd_packets;
+	std::fstream				fd_octets;
+	
+	sleep(SLEEP_DURATION);	
+	std::cout << "packets_read: " << packets_read << std::endl;
+	std::cout << "octets_read: " << octets_read << std::endl;
+	try
+	{
+		fd_packets.open(dest_info_file + "Packets.txt");
+		fd_octets.open(dest_info_file + "Octets.txt");
+		if (fd_packets.fail())
+			std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
+		if (fd_octets.fail())
+			std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
+		fd_packets << packets_read;
+		fd_packets.flush();
+		fd_octets << octets_read;
+		fd_octets.flush();
+	}
+	catch (const boost::program_options::error &e)
+	{
+		std::cerr << "Exception: " << e.what() << std::endl;
+	}
+	fd_packets.close();
+	fd_octets.close();
+	print();
+}
+
+int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl)
 {
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
@@ -56,7 +101,9 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 	("In.Port", boost::program_options::value<int>(&s_inport)->default_value(0), "Port In")
 	("Out.Group", boost::program_options::value<std::string>(&s_outgroup)->default_value(""), "Group Out")
 	("Out.Ip", boost::program_options::value<std::string>(&s_outip)->default_value(""), "Ip Out")
-	("Out.Port", boost::program_options::value<int>(&s_outport)->default_value(0), "Port Out");
+	("Out.Port", boost::program_options::value<int>(&s_outport)->default_value(0), "Port Out")
+	("Out.Ttl", boost::program_options::value<int>(&ttl)->default_value(0), "Ttl Out")
+	("Out.StatsPath", boost::program_options::value<std::string>(&dest_info_file)->default_value(""), "Stats Path");
 	
 	// Option from Command Line recuperation
 	boost::program_options::options_description description("Command Line Options");
@@ -69,7 +116,9 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 	("outgroup", boost::program_options::value<std::string>(&s_outgroup), "Group Out")
 	("outip", boost::program_options::value<std::string>(&s_outip), "Ip Out")
 	("outport", boost::program_options::value<int>(&s_outport), "Port Out")
+	("statspath", boost::program_options::value<std::string>(&dest_info_file), "Stats Path")
 	("config", boost::program_options::value<std::string>(&config_file), "Config File Name")
+	("ttl", boost::program_options::value<int>(&ttl), "Ttl Out")
 	("help", "Help Screen");
 	
 	try
@@ -96,18 +145,33 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 		return (1);
 	}
 	
-	if (s_ingroup.empty() == true || s_inip.empty() == true || s_inport == 0 || s_outgroup.empty() == true || s_outip.empty() == true || s_outport == 0)
+	if (s_ingroup.empty() == true || s_inip.empty() == true || s_inport == 0 || s_outgroup.empty() == true || s_outip.empty() == true || s_outport == 0 || ttl == 0)
 	{
-		std::cerr << "Group, Ip, Port from In and Out needed to run it" << std::endl;
-		std::cerr << description << std::endl << std::endl << file_description << std::endl;
+		std::cerr << "Group, Ip, Port from In/Out and Ttl Out needed to run it" << std::endl;
+		std::cerr << description << std::endl << file_description << std::endl;
 		return (1);
 	}
 	else if (boost_map.size() == 1 && boost_map.count("help"))
 	{
-		std::cerr << description << std::endl << std::endl << file_description << std::endl;
+		std::cerr << description << std::endl << file_description << std::endl;
 		return (1);
 	}
 	return (0);
+}
+
+int	packet_size_guessing(char databuf_in[16384], int size_read)
+{
+	int size_testing[1] = {188};
+	
+	for(int x = 0; x != 1; x++)
+	{
+		int index = 0;
+		if (databuf_in[size_testing[x] * index++] == 'G' && 
+			databuf_in[size_testing[x] * index++] == 'G' &&
+			databuf_in[size_testing[x] * index++] == 'G')
+			return (size_testing[x]);
+	}
+	return (-1);
 }
 
 int	main(int argc, char **argv)
@@ -135,7 +199,9 @@ int	main(int argc, char **argv)
     struct addrinfo *res0 = 0;
     int addr_len;
 	
-	if (init(argc, argv, s_ingroup, s_inport, s_inip, s_outgroup, s_outport, s_outip) == 1)
+	int ttl = 0;
+	
+	if (init(argc, argv, s_ingroup, s_inport, s_inip, s_outgroup, s_outport, s_outip, ttl) == 1)
 		return (1);
 	
 	res0 = udp_resolve_host( 0, s_outport, SOCK_DGRAM, AF_INET, AI_PASSIVE );
@@ -205,7 +271,7 @@ int	main(int argc, char **argv)
     } else {
       std::cout << "Setting the local out interface...OK\n" << std::endl;
     }
-    unsigned char ttl = 32;
+    
     if( setsockopt( sd_out, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl) ) < 0 ) {   
       std::cerr << "Setting ttl" << std::endl;
       return(1);
@@ -284,9 +350,11 @@ int	main(int argc, char **argv)
 
     /* Read from the socket. */
     datalen_in = sizeof(databuf_in);
-
+	
+	std::thread t(print);
+	
     while(1) {
-      datalen_out = read(sd_in, databuf_in, datalen_in); 
+      datalen_out = read(sd_in, databuf_in, datalen_in);
       if(datalen_out < 0) {
         std::cerr << "Reading datagram im message error" << std::endl;
         close(sd_in);
@@ -294,16 +362,18 @@ int	main(int argc, char **argv)
         return(1);
       } else {
         //printf("Reading datagram message in ...OK.\n");
-        std::cout << "r";
+		//std::cout << " **r: " << databuf_in << "  " <<strlen(databuf_in) << "**";
     //    printf("The message from multicast server in is: \"%s\"\n", databuf_in);
       }
+	  
       if(sendto(sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0) {
          std::cerr << "Sending datagram message out error" << std::endl;
       } else {
-        //printf("Sending datagram message out...OK\n");
-        std::cout << "w";
+		int packets_size = packet_size_guessing(databuf_in, datalen_out);
+		int packets_per_read = datalen_out / packets_size;
+		packets_read = packets_read + packets_per_read;
+		octets_read = octets_read + datalen_out;
       }
-
     }
 	return (0);
 }
