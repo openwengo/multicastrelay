@@ -26,8 +26,8 @@
 
 std::list<short> 			pid_list;
 std::vector<int>			pkts_per_pids;
-unsigned long int		packets_read = 0;
-unsigned long int		octets_read = 0;
+unsigned long long int		packets_read = 0;
+unsigned long long int		octets_read = 0;
 std::string					dest_info_file;
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
@@ -63,7 +63,7 @@ void	print()
 	std::ofstream				fd_packets;
 	std::ofstream				fd_octets;
 	std::ofstream				fd_debit;
-	static unsigned long int	saved_value;
+	static unsigned long long int	saved_value;
 	unsigned long int			debit;
 	
 	sleep(SLEEP_DURATION);
@@ -381,12 +381,19 @@ int	main(int argc, char **argv)
       if(sendto(sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0) {
          std::cerr << "Sending datagram message out error" << std::endl;
       } else {
+        //printf("Sending datagram message out...OK\n");
+		//std::cout << " w ";
+		/*for (int i = 0; i != strlen(databuf_in); i++)
+			std::cout << std::bitset<8>(databuf_in[i]) << " ";*/
+		//std::cout << " w: " << databuf_in << " size: " << strlen(databuf_in);
+		/*int len = strlen(databuf_in);
+		if (len > 3)
+		{*/
 	
 		int packets_size = packet_size_guessing(databuf_in, datalen_out);
 		int packets_per_read = datalen_out / packets_size;
 		packets_read = packets_read + packets_per_read;
 		octets_read = octets_read + datalen_out;
-		
       }
     }
 	return (0);
