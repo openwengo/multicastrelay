@@ -32,6 +32,7 @@ std::vector<int> 					last_continuity_counter_per_pid;
 unsigned long long int				packets_read = 0;
 unsigned long long int				octets_read = 0;
 std::string							dest_info_file;
+unsigned long long int				max_interval_value_between_packets = 0;								
 
 static std::string 		s_ingroup;
 static int  			s_inport;
@@ -70,6 +71,7 @@ void	print()
 	std::ofstream									fd_packets;
 	std::ofstream									fd_octets;
 	std::ofstream									fd_debit;
+	std::ofstream									fd_interval;
 	std::ofstream									fd;
 	static unsigned long long int					saved_value;
 	unsigned long int								debit;
@@ -135,23 +137,29 @@ void	print()
 	std::cout << "packets_read: " << packets_read << std::endl;
 	std::cout << "octets_read: " << octets_read << std::endl;
 	std::cout << "debit: " << debit << std::endl;
+	std::cout << "interval max between two packets: " << max_interval_value_between_packets << " milliseconds" << std::endl;
 	try
 	{
 		fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
 		fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
 		fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
+		fd_interval.open(dest_info_file + "Millisecond_intervale_max_between_packets.txt", std::ofstream::out | std::ofstream::trunc);
 		if (fd_packets.fail())
 			std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
 		if (fd_octets.fail())
 			std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
 		if (fd_debit.fail())
 			std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
+		if (fd_interval.fail())
+			std::cerr << "Opening " << dest_info_file << "Millisecond_intervale_max_between_packets.txt failed" << std::endl;
 		fd_packets << packets_read << std::endl;
 		fd_packets.flush();
 		fd_octets << octets_read << std::endl;
 		fd_octets.flush();
 		fd_debit << debit << std::endl;
 		fd_debit.flush();
+		fd_interval << max_interval_value_between_packets << std::endl;
+		fd_interval.flush();
 	}
 	catch(std::exception &e)
 	{
@@ -264,7 +272,7 @@ int	main(int argc, char **argv)
     struct 					sockaddr_in groupSock;
     int 					sd_out;
     char 					databuf_out[16384] = "Multicast test message lol!";
-    int 					datalen_out = sizeof(databuf_out);
+    int 					datalen_out;// = sizeof(databuf_out);
 	struct 					sockaddr_in localSock;
     struct 					ip_mreq group;
     int 					sd_in;
@@ -434,9 +442,18 @@ int	main(int argc, char **argv)
     datalen_in = sizeof(databuf_in);
 	
 	std::thread t(print);
-	
+	//First time getter
+	auto last_time = boost::posix_time::microsec_clock::local_time();
     while(1) {
       datalen_out = read(sd_in, databuf_in, datalen_in);
+	  
+		// Calcule en milliseconds de l'intervale de reception de chaque packets
+		auto actual_time  = boost::posix_time::microsec_clock::local_time();
+		boost::posix_time::time_duration diff = actual_time - last_time;
+		if (diff.total_milliseconds() > max_interval_value_between_packets)
+			max_interval_value_between_packets = diff.total_milliseconds();
+		last_time = actual_time;
+	  
       if(datalen_out < 0) {
         std::cerr << "Reading datagram im message error" << std::endl;
         close(sd_in);
