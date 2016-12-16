@@ -16,6 +16,7 @@
 #include <vector>
 #include <algorithm>
 #include <thread>
+#include <stdexcept>
 
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
@@ -24,18 +25,24 @@
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
 #define SLEEP_DURATION 60
 
-std::list<short> 			pid_list;
-std::vector<int>			pkts_per_pids;
-unsigned long int		packets_read = 0;
-unsigned long int		octets_read = 0;
-std::string					dest_info_file;
+std::list<short> 					pid_list;
+std::vector<unsigned long long int>	pkts_per_pids;
+std::vector<unsigned long long int> continuity_error_per_pid;
+std::vector<int> 					last_continuity_counter_per_pid;
+unsigned long long int				packets_read = 0;
+unsigned long long int				octets_read = 0;
+std::string							dest_info_file;
+
+static std::string 		s_ingroup;
+static int  			s_inport;
+static std::string 		s_inip;
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
-    struct addrinfo hints, *res = 0;
-    int error;
-    char sport[16];
-    const char *node = 0, *service = "0";
+    struct		addrinfo hints, *res = 0;
+    int 		error;
+    char 		sport[16];
+    const char	*node = 0, *service = "0";
 
     if( port > 0 )
     {   
@@ -60,14 +67,71 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
 
 void	print()
 {
-	std::ofstream				fd_packets;
-	std::ofstream				fd_octets;
-	std::ofstream				fd_debit;
-	static unsigned long int	saved_value;
-	unsigned long int			debit;
+	std::ofstream									fd_packets;
+	std::ofstream									fd_octets;
+	std::ofstream									fd_debit;
+	std::ofstream									fd;
+	static unsigned long long int					saved_value;
+	unsigned long int								debit;
+	std::list<short>::iterator						pid_it;
+	std::vector<unsigned long long int>::iterator	value_it;
+	static std::vector<unsigned long long int>		packet_per_pid_saved_value;
+	static int 										door;
 	
 	sleep(SLEEP_DURATION);
-	debit = ((octets_read - saved_value) * 8) / 60; // get debit = bite per second
+	
+	if (door == 0)
+	{
+		for (pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
+			packet_per_pid_saved_value.push_back(0);
+		++door;
+	}
+	
+	// Ecriture des fichiers "pkts_in_ip_port du flux entrant_pidN" Pour tout N
+	int position = 0;
+	for (pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
+	{
+		try
+		{
+			fd.open(dest_info_file + "pkts_in_" + s_inip + "_" + std::to_string(s_inport) + "_" + std::to_string(*pid_it) + ".txt", std::ofstream::out | std::ofstream::trunc);
+			if (fd.fail())
+				std::cerr << "Opening " << dest_info_file << "pkts_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string(*pid_it) << ".txt" << " failed" << std::endl;
+			double packets_per_second = (pkts_per_pids[position] - packet_per_pid_saved_value[position]) / (double)SLEEP_DURATION;
+			packet_per_pid_saved_value[position] = pkts_per_pids[position];
+			fd << packets_per_second << std::endl;
+			fd.flush();
+		}
+		catch(std::exception &e)
+		{
+			std::cerr << "Exception: " << e.what() << std::endl;
+		}
+		position++;
+		fd.close();
+	}
+	
+	// Ecriture des fichiers "continuity_error_in_ip_port du flux entrant_pidN" Pour tout N
+	position = 0;
+	for (pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
+	{
+		try
+		{
+			fd.open(dest_info_file + "continuity_error_in_" + s_inip + "_" + std::to_string(s_inport) + "_" + std::to_string(*pid_it) + ".txt", std::ofstream::out | std::ofstream::trunc);
+			if (fd.fail())
+				std::cerr << "Opening " << dest_info_file << "continuity_error_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string(*pid_it) << ".txt" << " failed" << std::endl;
+			std::cout << "PID: " << *pid_it << " = " << continuity_error_per_pid[position] << " continuity errors" << std::endl;
+			fd << continuity_error_per_pid[position] << std::endl;
+			fd.flush();
+		}
+		catch(std::exception &e)
+		{
+			std::cerr << "Exception: " << e.what() << std::endl;
+		}
+		position++;
+		fd.close();
+	}
+	
+	// Ecriture des Fichiers Octects.txt Packets.txt Debit.txt
+	debit = ((octets_read - saved_value) * 8) / SLEEP_DURATION; // get debit = bite per second
 	std::cout << "packets_read: " << packets_read << std::endl;
 	std::cout << "octets_read: " << octets_read << std::endl;
 	std::cout << "debit: " << debit << std::endl;
@@ -89,7 +153,7 @@ void	print()
 		fd_debit << debit << std::endl;
 		fd_debit.flush();
 	}
-	catch (const boost::program_options::error &e)
+	catch(std::exception &e)
 	{
 		std::cerr << "Exception: " << e.what() << std::endl;
 	}
@@ -97,6 +161,14 @@ void	print()
 	fd_octets.close();
 	fd_debit.close();
 	saved_value = octets_read;
+	
+	
+	int x = 0;
+	for (std::list<short>::iterator it = pid_list.begin(); it != pid_list.end(); it++)
+	{
+		std::cout << "PID " << *it << " = " << pkts_per_pids[x] << " packets" << std::endl;
+		++x;
+	}
 	print();
 }
 
@@ -188,28 +260,26 @@ int	packet_size_guessing(char databuf_in[16384], int size_read)
 
 int	main(int argc, char **argv)
 {
-	struct in_addr localInterface;
-    struct sockaddr_in groupSock;
-    int sd_out;
-    char databuf_out[16384] = "Multicast test message lol!";
-    int datalen_out = sizeof(databuf_out);
-	struct sockaddr_in localSock;
-    struct ip_mreq group;
-    int sd_in;
-    int datalen_in;
-    char databuf_in[16384];
+	struct 					in_addr localInterface;
+    struct 					sockaddr_in groupSock;
+    int 					sd_out;
+    char 					databuf_out[16384] = "Multicast test message lol!";
+    int 					datalen_out = sizeof(databuf_out);
+	struct 					sockaddr_in localSock;
+    struct 					ip_mreq group;
+    int 					sd_in;
+    int 					datalen_in;
+    char 					databuf_in[16384];
 	
-	static std::string s_ingroup;
-    static int  s_inport;
-    static std::string s_inip;
-	
-	static std::string s_outgroup; 
-    static int  s_outport;
-    static std::string s_outip;
+	static std::string		s_outgroup; 
+    static int				s_outport;
+    static std::string 		s_outip;
 	
 	struct sockaddr_storage my_addr;
-    struct addrinfo *res0 = 0;
-    int addr_len;
+    struct addrinfo 		*res0 = 0;
+    int 					addr_len;
+	
+	std::list<short>::iterator index;
 	
 	int ttl = 0;
 	
@@ -381,12 +451,119 @@ int	main(int argc, char **argv)
       if(sendto(sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0) {
          std::cerr << "Sending datagram message out error" << std::endl;
       } else {
+        //printf("Sending datagram message out...OK\n");
+		//std::cout << " w ";
+		/*for (int i = 0; i != strlen(databuf_in); i++)
+			std::cout << std::bitset<8>(databuf_in[i]) << " ";*/
+		//std::cout << " w: " << databuf_in << " size: " << strlen(databuf_in);
+		/*int len = strlen(databuf_in);
+		if (len > 3)
+		{*/
 	
 		int packets_size = packet_size_guessing(databuf_in, datalen_out);
 		int packets_per_read = datalen_out / packets_size;
 		packets_read = packets_read + packets_per_read;
 		octets_read = octets_read + datalen_out;
 		
+		
+		// découpage packets lu par chaque read, creation list de pid et un vector permetant de compter packet par pid
+		//int i = 0;
+		
+		for (int x = 0; x != packets_per_read; x++)
+		{
+			short PID; // PID
+			
+			PID = ((databuf_in[(x * packets_size) + 1] << 8) | databuf_in[(x * packets_size) + 2]) & 0x1fff;
+			if ((index = std::find(pid_list.begin(), pid_list.end(), PID)) == pid_list.end())
+			{
+				pid_list.push_back(PID);
+				pkts_per_pids.push_back(0);
+				last_continuity_counter_per_pid.push_back(99); // initialisation , continuity counter ne va pas au dessus de 15, 99 sert de verification pour les premier passages
+				continuity_error_per_pid.push_back(0); // init
+				std::cout << "PIDS list:" << std::endl;
+				for (std::list<short>::iterator pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
+					std::cout << *pid_it << std::endl;
+			}
+			int position = std::distance(pid_list.begin(), index);
+			int continuity = databuf_in[(x * packets_size) + 3] & 0x0F;
+			pkts_per_pids[position] = pkts_per_pids[position] + 1;
+			
+			// Continuity Error Check
+			if (PID != 8191 && last_continuity_counter_per_pid[position] != 99) // PID 8191 n'a pas de continuity counter, On evite la comparaison de l'initialisation 99
+			{
+				if ((databuf_in[(x * packets_size) + 3] & (1u << 5))) // **1* **** Adaptation Field Control = 10 or 11
+				{
+					if ((databuf_in[(x * packets_size) + 3] & (1u << 4))) // **11 **** Adaptation Field Control = 11
+					{
+						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **11 1*** Adaptation Field Control = 11 and Discontinuity Indicator = 1
+						{
+							if (last_continuity_counter_per_pid[position] != continuity) // verif =
+								std::cout << "Adaptation field control = 11 and Discontinuity Indicator = 1" <<std::endl;
+
+						}
+						else // **11 0*** Adaptation Field Control = 11 and Discontinuity Indicator = 0
+						{	
+						
+							//verif cc
+							if (((last_continuity_counter_per_pid[position] + 1 != continuity) && last_continuity_counter_per_pid[position] != 15) || (last_continuity_counter_per_pid[position] == 15 && continuity != 0))
+							{
+								continuity_error_per_pid[position] = continuity_error_per_pid[position] + 1;
+								std::cout << "Adaptation field control  = 11 and Discontinuity Indicator = 0"<<std::endl;
+							}
+						}
+					}
+					else // **10 **** Adaptation Field Control = 10
+					{
+						if (last_continuity_counter_per_pid[position] != continuity) // verif =
+						{
+							continuity_error_per_pid[position] = continuity_error_per_pid[position] + 1;
+							std::cout << "Adaptation field control = 10 and continuity counter not equal to precedent continuity counter"<<std::endl;
+						}
+						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **10 1*** Adaptation Field Control = 10 and Discontinuity Indicator = 1
+						{
+							
+						}
+						else // **10 0*** Adaptation Field Control = 10 and Discontinuity Indicator = 0
+						{
+							
+						}
+					}
+				}
+				else // **0* **** Adaptation Field Control = 01 or 00				
+				{
+					if ((databuf_in[(x * packets_size) + 3] & (1u << 4))) // **01 **** Adaptation Field Control = 01 
+					{
+						// verif cc
+						if (((last_continuity_counter_per_pid[position] + 1 != continuity) && last_continuity_counter_per_pid[position] != 15) || (last_continuity_counter_per_pid[position] == 15 && continuity != 0))
+						{
+							continuity_error_per_pid[position] = continuity_error_per_pid[position] + 1;
+							std::cout << "Adaptation field control = 01 and continuity error detected " << std::endl;
+						}
+					}
+					else // **00 **** Adaptation Field Control = 00
+					{
+						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **00 1*** Adaptation Field Control = 00 and Discontinuity Indicator = 1
+						{
+							
+						}
+						else // **00 0*** Adaptation Field Control = 00 and Discontinuity Indicator = 0
+						{
+							
+						}
+					}
+				}
+			}
+			last_continuity_counter_per_pid[position] = continuity;
+			/*std::cout << "PID: " << PID << std::endl;
+			while (i != (x * packets_size))
+			{
+				std::cout << std::bitset<8>(databuf_in[i]) << " ";
+				++i;
+				}
+				std::cout << std::endl;*/
+		}
+			//}
+		//}
       }
     }
 	return (0);
