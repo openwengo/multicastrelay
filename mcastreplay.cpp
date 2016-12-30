@@ -391,9 +391,12 @@ int	main(int argc, char **argv)
 		{*/
 	
 		int packets_size = packet_size_guessing(databuf_in, datalen_out);
-		int packets_per_read = datalen_out / packets_size;
-		packets_read = packets_read + packets_per_read;
-		octets_read = octets_read + datalen_out;
+		if (packets_size != -1)
+		{
+			int packets_per_read = datalen_out / packets_size;
+			packets_read = packets_read + packets_per_read;
+			octets_read = octets_read + datalen_out;
+		}
       }
     }
 	return (0);
