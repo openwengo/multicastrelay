@@ -4,7 +4,8 @@ CC = g++
 
 RM	= rm -f
 
-SRC = mcastreplay.cpp
+SRC = mcastreplay.cpp\
+	  pid.cpp
 
 CPPFLAGS = -I ../boost_1_61_0/ -std=gnu++11 -pthread
 
