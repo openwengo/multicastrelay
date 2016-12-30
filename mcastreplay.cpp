@@ -27,6 +27,8 @@
 
 std::vector<short>					program_map_pids;
 std::list<short> 					pid_list;
+std::vector<std::string>			pid_type;
+std::vector<std::string>			pid_description;
 std::vector<unsigned long long int>	pkts_per_pids;
 std::vector<unsigned long long int> continuity_error_per_pid;
 std::vector<int> 					last_continuity_counter_per_pid;
@@ -40,6 +42,26 @@ static int							interval;
 static std::string 		s_ingroup;
 static int  			s_inport;
 static std::string 		s_inip;
+
+/*class Pid
+{
+	public:
+	Pid(short val){this->pid = val;};
+	~Pid(){};
+	
+	short					pid;
+	std::string				type;
+	std::string				description;
+	unsigned long long int	pkts_per_pids;
+	unsigned long long int	continuity_error_per_pid;
+	short					last_continuity_counter_per_pid;
+};
+
+class Pid_list
+{
+	public:
+	std::list<Pid>	pid_list;
+};*/
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
@@ -280,10 +302,34 @@ int	packet_size_guessing(char databuf_in[16384], int size_read)
 	return (-1);
 }
 
-void	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_time::ptime &last_time_pcr)
+/*// 00000000 00000000 00000001
+int	find_packet_start_code_prefix_PES(int &packets_size, int &x, char databuf_in[16384], short PID)
+{
+	for (int pos = 0; pos != packets_size; pos++)
+	{
+		if ((((x * packets_size) + pos + 1) <= ((x + 1) * packets_size)) && (((x * packets_size) + pos + 2) <= ((x + 1) * packets_size)))
+			if (databuf_in[(x * packets_size) + pos] == 0 && databuf_in[(x * packets_size) + pos + 1] == 0 && databuf_in[(x * packets_size) + pos + 2] == 1)
+			{
+				int i = x * packets_size;
+				std::cout << "PID: " << PID << std::endl;
+				while (i != (x * packets_size) + packets_size)
+				{
+					std::cout << std::bitset<8>(databuf_in[i]) << " ";
+					++i;
+				}
+				std::cout << std::endl;
+				return (0);
+			}
+	}
+	return (1);
+}*/
+
+int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_time::ptime &last_time_pcr)
 {
 	std::list<short>::iterator index;
-	int packets_size = packet_size_guessing(databuf_in, datalen_out);
+	int packets_size;
+	if ((packets_size = packet_size_guessing(databuf_in, datalen_out)) == -1)
+		return (1);
 	int packets_per_read = datalen_out / packets_size;
 		
 	packets_read = packets_read + packets_per_read;
@@ -293,191 +339,191 @@ void	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_ti
 	// découpage packets lu par chaque read, creation list de pid et un vector permetant de compter packet par pid		
 	for (int x = 0; x != packets_per_read; x++)
 	{
-		short PID; // PID
-			
-		PID = ((databuf_in[(x * packets_size) + 1] << 8) | databuf_in[(x * packets_size) + 2]) & 0x1fff;
-		if ((index = std::find(pid_list.begin(), pid_list.end(), PID)) == pid_list.end())
+		if (databuf_in[(x * packets_size)] == 'G')
 		{
-			pid_list.push_back(PID);
-			pkts_per_pids.push_back(0);
-			last_continuity_counter_per_pid.push_back(99); // initialisation , continuity counter ne va pas au dessus de 15, 99 sert de verification pour les premier passages
-			continuity_error_per_pid.push_back(0); // init
-			std::cout << "PIDS list:" << std::endl;
-			for (std::list<short>::iterator pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
-				std::cout << *pid_it << std::endl;
-		}
-		int position = std::distance(pid_list.begin(), index);
-		int continuity = databuf_in[(x * packets_size) + 3] & 0x0F;
-		pkts_per_pids[position] = pkts_per_pids[position] + 1;
+			short PID; // PID
 		
-		// Continuity Error Check
-		if (PID != 8191 && last_continuity_counter_per_pid[position] != 99) // PID 8191 n'a pas de continuity counter, On evite la comparaison de l'initialisation 99
-		{
-			if ((databuf_in[(x * packets_size) + 3] & (1u << 5))) // **1* **** Adaptation Field Control = 10 or 11
+			PID = ((databuf_in[(x * packets_size) + 1] << 8) | databuf_in[(x * packets_size) + 2]) & 0x1fff;
+			if ((index = std::find(pid_list.begin(), pid_list.end(), PID)) == pid_list.end())
 			{
-				if ((databuf_in[(x * packets_size) + 3] & (1u << 4))) // **11 **** Adaptation Field Control = 11
+				pid_list.push_back(PID);
+				pkts_per_pids.push_back(0);
+				last_continuity_counter_per_pid.push_back(99); // initialisation , continuity counter ne va pas au dessus de 15, 99 sert de verification pour les premier passages
+				continuity_error_per_pid.push_back(0); // init
+				std::cout << "PIDS list:" << std::endl;
+				for (std::list<short>::iterator pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
+					std::cout << *pid_it << std::endl;
+			}
+			int position = std::distance(pid_list.begin(), index);
+			int continuity = databuf_in[(x * packets_size) + 3] & 0x0F;
+			pkts_per_pids[position] = pkts_per_pids[position] + 1;
+		
+			// Continuity Error Check
+			if (PID != 8191 && last_continuity_counter_per_pid[position] != 99) // PID 8191 n'a pas de continuity counter, On evite la comparaison de l'initialisation 99
+			{
+				if ((databuf_in[(x * packets_size) + 3] & (1u << 5))) // **1* **** Adaptation Field Control = 10 or 11
 				{
-					if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **11 1*** Adaptation Field Control = 11 and Discontinuity Indicator = 1
+					if ((databuf_in[(x * packets_size) + 3] & (1u << 4))) // **11 **** Adaptation Field Control = 11
+					{
+						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **11 1*** Adaptation Field Control = 11 and Discontinuity Indicator = 1
+						{
+							if (last_continuity_counter_per_pid[position] != continuity) // verif =
+								std::cout << "Adaptation field control = 11 and Discontinuity Indicator = 1" <<std::endl;
+							}
+						else // **11 0*** Adaptation Field Control = 11 and Discontinuity Indicator = 0
+						{	
+						
+							//verif cc
+							if (((last_continuity_counter_per_pid[position] + 1 != continuity) && last_continuity_counter_per_pid[position] != 15) || (last_continuity_counter_per_pid[position] == 15 && continuity != 0))
+							{
+								continuity_error_per_pid[position] = continuity_error_per_pid[position] + 1;
+								std::cout << "Adaptation field control  = 11 and Discontinuity Indicator = 0"<<std::endl;
+							}
+						}
+					}
+					else // **10 **** Adaptation Field Control = 10
 					{
 						if (last_continuity_counter_per_pid[position] != continuity) // verif =
-							std::cout << "Adaptation field control = 11 and Discontinuity Indicator = 1" <<std::endl;
+						{
+							continuity_error_per_pid[position] = continuity_error_per_pid[position] + 1;
+							std::cout << "Adaptation field control = 10 and continuity counter not equal to precedent continuity counter"<<std::endl;
 						}
-					else // **11 0*** Adaptation Field Control = 11 and Discontinuity Indicator = 0
-					{	
-					
-						//verif cc
+						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **10 1*** Adaptation Field Control = 10 and Discontinuity Indicator = 1
+						{
+						
+						}
+						else // **10 0*** Adaptation Field Control = 10 and Discontinuity Indicator = 0
+						{
+						
+						}
+					}
+				}
+				else // **0* **** Adaptation Field Control = 01 or 00				
+				{
+					if ((databuf_in[(x * packets_size) + 3] & (1u << 4))) // **01 **** Adaptation Field Control = 01 
+					{
+						// verif cc
 						if (((last_continuity_counter_per_pid[position] + 1 != continuity) && last_continuity_counter_per_pid[position] != 15) || (last_continuity_counter_per_pid[position] == 15 && continuity != 0))
 						{
 							continuity_error_per_pid[position] = continuity_error_per_pid[position] + 1;
-							std::cout << "Adaptation field control  = 11 and Discontinuity Indicator = 0"<<std::endl;
+							std::cout << "Adaptation field control = 01 and continuity error detected " << std::endl;
+						}
+					}
+					else // **00 **** Adaptation Field Control = 00
+					{
+						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **00 1*** Adaptation Field Control = 00 and Discontinuity Indicator = 1
+						{
+						
+						}
+						else // **00 0*** Adaptation Field Control = 00 and Discontinuity Indicator = 0
+						{
+						
 						}
 					}
 				}
-				else // **10 **** Adaptation Field Control = 10
-				{
-					if (last_continuity_counter_per_pid[position] != continuity) // verif =
-					{
-						continuity_error_per_pid[position] = continuity_error_per_pid[position] + 1;
-						std::cout << "Adaptation field control = 10 and continuity counter not equal to precedent continuity counter"<<std::endl;
-					}
-					if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **10 1*** Adaptation Field Control = 10 and Discontinuity Indicator = 1
-					{
-						
-					}
-					else // **10 0*** Adaptation Field Control = 10 and Discontinuity Indicator = 0
-					{
-						
-					}
-				}
 			}
-			else // **0* **** Adaptation Field Control = 01 or 00				
-			{
-				if ((databuf_in[(x * packets_size) + 3] & (1u << 4))) // **01 **** Adaptation Field Control = 01 
-				{
-					// verif cc
-					if (((last_continuity_counter_per_pid[position] + 1 != continuity) && last_continuity_counter_per_pid[position] != 15) || (last_continuity_counter_per_pid[position] == 15 && continuity != 0))
-					{
-						continuity_error_per_pid[position] = continuity_error_per_pid[position] + 1;
-						std::cout << "Adaptation field control = 01 and continuity error detected " << std::endl;
-					}
-				}
-				else // **00 **** Adaptation Field Control = 00
-				{
-					if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **00 1*** Adaptation Field Control = 00 and Discontinuity Indicator = 1
-					{
-						
-					}
-					else // **00 0*** Adaptation Field Control = 00 and Discontinuity Indicator = 0
-					{
-						
-					}
-				}
-			}
-		}
-		last_continuity_counter_per_pid[position] = continuity;
+			last_continuity_counter_per_pid[position] = continuity;
 		
-		// Check if its a packet with PCR field For interval calculation between 2 packets with pcr field
-		if (databuf_in[(x * packets_size) + 5] & (1u << 4)) // Checking if PCR flag = 1
-		{
-			boost::posix_time::ptime actual_time_pcr = boost::posix_time::microsec_clock::local_time();
-			boost::posix_time::time_duration diff = actual_time_pcr - last_time_pcr;
-			if (diff.total_milliseconds() > max_interval_value_between_pcr)
-				max_interval_value_between_pcr = diff.total_milliseconds();
-			last_time_pcr = actual_time_pcr;
-		}
+			// Check if its a packet with PCR field For interval calculation between 2 packets with pcr field
+			if (databuf_in[(x * packets_size) + 5] & (1u << 4)) // Checking if PCR flag = 1
+			{
+				boost::posix_time::ptime actual_time_pcr = boost::posix_time::microsec_clock::local_time();
+				boost::posix_time::time_duration diff = actual_time_pcr - last_time_pcr;
+				if (diff.total_milliseconds() > max_interval_value_between_pcr)
+					max_interval_value_between_pcr = diff.total_milliseconds();
+				last_time_pcr = actual_time_pcr;
+			}
 		
-		// octet 6-7 section length, "These bytes must not exceed a value of 1021"
-		short section_length;
-		if ((section_length= ((databuf_in[(x * packets_size) + 6] & 0x7) << 8) | (databuf_in[(x * packets_size) + 7] & 0xff)) > 1021)
-			section_length = 0;
-		//PSI
-		if (PID == 0) // PAT
-		{
-			short pat_repetition_size = 4;
-			short repetition = 0;
-		    // Program num
-			/* 16bit value = (((databuf_in[(x * packets_size) + 13] & 0xff) << 8) | (databuf_in[(x * packets_size) + 14] & 0xff));
-			*/
-			
-			// PMT PID / Program Map PID, begin at byte 15-16
-			while (15 + (repetition * pat_repetition_size) < section_length + 6) // 6 = byte number of section length begining 
+			// octet 6-7 section length, "These bytes must not exceed a value of 1021"
+			short section_length;
+			if ((section_length= ((databuf_in[(x * packets_size) + 6] & 0x7) << 8) | (databuf_in[(x * packets_size) + 7] & 0xff)) > 1021)
+				section_length = 0;
+			//PSI
+			if (PID == 0) // PAT
 			{
-				short program_map_pid = ((databuf_in[(x * packets_size) + 15 + (repetition * pat_repetition_size)] & 0x1f) << 8) | 
-					(databuf_in[(x * packets_size) + 16] & 0xff);
-				if (std::find(program_map_pids.begin(), program_map_pids.end(), program_map_pid) == program_map_pids.end())
-					program_map_pids.push_back(program_map_pid);
-				std::cout << "PID: " << PID << " Program Map Pid: " << program_map_pid << std::endl;
-				++repetition;
-			}
-		}
-		// PMT
-		else if (std::find(program_map_pids.begin(), program_map_pids.end(), PID) != program_map_pids.end()) // Checking if this PMT has been mentioned in a PAT packet
-		{
-			int i = x * packets_size;
-			std::cout << "PID: " << PID << std::endl;
-			while (i != (x * packets_size) + packets_size)
-			{
-				std::cout << std::bitset<8>(databuf_in[i]) << " ";
-				++i;
-			}
-			std::cout << std::endl;
-			std::cout << "section length: " << section_length << std::endl;
+				short pat_repetition_size = 4;
+				short repetition = 0;
+				// Program num
+				/* 16bit value = (((databuf_in[(x * packets_size) + 13] & 0xff) << 8) | (databuf_in[(x * packets_size) + 14] & 0xff));
+				*/
 			
-			//octet 13 14 pcr pid
-			short pcr_pid = ((databuf_in[(x * packets_size) + 13] & 0x1f) << 8) | (databuf_in[(x * packets_size) + 14] & 0xff);
-			std::cout << "pcr_pid: " << pcr_pid << std::endl;
-			short stream_type;
-			short elementary_pid;
-			short es_info_length_length;
-			short descriptor_tag;
-			short descriptor_length;
-			short boucle_length;
-			
-			
-			// counter to iterate through ES info
-			short es_counter;// = 2 + descriptor_length; 
-
-			// skip this number of bytes (boucle_length) to get an other stream_type
-			boucle_length = 0;
-			while (17 + boucle_length < section_length)
-			{
-				// octet 17 = premier stream type boucle jusque fin de section
-				stream_type = databuf_in[(x * packets_size) + 17 + boucle_length];
-				//octet 18-19 = premier elementary pid
-				elementary_pid = ((databuf_in[(x * packets_size) + 18 + boucle_length] & 0x1f) << 8) | (databuf_in[(x * packets_size) + 19 + boucle_length] & 0xff);
-				//octet 20-21 = es_info_length_length 
-				// es_info_length_length give the number of bytes (right after bytes 20-21) that are used for Descriptor enum (Descriptor section in Wikipedia)
-				es_info_length_length = ((databuf_in[(x * packets_size) + 20 + boucle_length] & 0x3) << 8) | (databuf_in[(x * packets_size) + 21 + boucle_length] & 0xff);
-				// octet 22 = premier descriptor_tag
-				descriptor_tag = databuf_in[(x * packets_size) + 22 + boucle_length];
-				// octet 23 = premiere definition du nombre d'octet qui suive l'octet 23 pour la description du descriptor
-				descriptor_length = databuf_in[(x * packets_size) + 23 + boucle_length];		
-				
-				std::cout << "stream_type: " << stream_type << " elementary_pid: " << elementary_pid << " es_info_length_length: "
-				<< es_info_length_length << " boucle_length: " << boucle_length << std::endl;
-				
-				es_counter = 2 + descriptor_length; // (2 = bytes used by descriptor_tag and descriptor_length) + bytes used for description of destructor_tag
-				
-				std::cout << "descriptor_tag: " << descriptor_tag << " descriptor_length: " << descriptor_length;
-				std::cout << " descriptor_info: ";
-				for (int i = 1; i <= descriptor_length; i++)
-					std::cout << " " << std::bitset<8>(databuf_in[(x * packets_size) + 23 + boucle_length + i]);
-				std::cout << std::endl;
-				
-				while (es_counter != es_info_length_length)
+				// PMT PID / Program Map PID, begin at byte 15-16
+				while (15 + (repetition * pat_repetition_size) < section_length + 6) // 6 = byte number of section length begining 
 				{
-					descriptor_tag = databuf_in[(x * packets_size) + 22 + boucle_length + es_counter];
-					descriptor_length = databuf_in[(x * packets_size) + 23 + boucle_length + es_counter];
-					
+					short program_map_pid = ((databuf_in[(x * packets_size) + 15 + (repetition * pat_repetition_size)] & 0x1f) << 8) | 
+						(databuf_in[(x * packets_size) + 16] & 0xff);
+					if (std::find(program_map_pids.begin(), program_map_pids.end(), program_map_pid) == program_map_pids.end())
+						program_map_pids.push_back(program_map_pid);
+					std::cout << "PID: " << PID << " Program Map Pid: " << program_map_pid << std::endl;
+					++repetition;
+				}
+			}
+			// PMT
+			else if (std::find(program_map_pids.begin(), program_map_pids.end(), PID) != program_map_pids.end()) // Checking if this PMT has been mentioned in a PAT packet
+			{			
+				//octet 13 14 pcr pid
+				short pcr_pid = ((databuf_in[(x * packets_size) + 13] & 0x1f) << 8) | (databuf_in[(x * packets_size) + 14] & 0xff);
+				std::cout << "pcr_pid: " << pcr_pid << std::endl;
+				short stream_type;
+				short elementary_pid;
+				short es_info_length_length;
+				short descriptor_tag;
+				short descriptor_length;
+				short boucle_length;
+				// octet 8 9 table id extension, "Informational only identifier. The PAT uses this for the transport stream identifier and the PMT uses this for the Program number."
+				short table_id_extension;
+			
+				// counter to iterate through ES info
+				short es_counter;// = 2 + descriptor_length; 
+	
+				// skip this number of bytes (boucle_length) to get an other stream_type
+				boucle_length = 0;
+				while (17 + boucle_length < section_length)
+				{
+					table_id_extension = (databuf_in[(x * packets_size) + 8] << 8) | (databuf_in[(x * packets_size) + 9] & 0xff);
+					// octet 17 = premier stream type boucle jusque fin de section
+					stream_type = databuf_in[(x * packets_size) + 17 + boucle_length];
+					//octet 18-19 = premier elementary pid
+					elementary_pid = ((databuf_in[(x * packets_size) + 18 + boucle_length] & 0x1f) << 8) | (databuf_in[(x * packets_size) + 19 + boucle_length] & 0xff);
+					//octet 20-21 = es_info_length_length 
+					// es_info_length_length give the number of bytes (right after bytes 20-21) that are used for Descriptor enum (Descriptor section in Wikipedia)
+					es_info_length_length = ((databuf_in[(x * packets_size) + 20 + boucle_length] & 0x3) << 8) | (databuf_in[(x * packets_size) + 21 + boucle_length] & 0xff);
+					// octet 22 = premier descriptor_tag
+					descriptor_tag = databuf_in[(x * packets_size) + 22 + boucle_length];
+					// octet 23 = premiere definition du nombre d'octet qui suive l'octet 23 pour la description du descriptor
+					descriptor_length = databuf_in[(x * packets_size) + 23 + boucle_length];		
+				
+					std::cout << "stream_type: " << stream_type << " elementary_pid: " << elementary_pid << " es_info_length_length: "
+					<< es_info_length_length << " boucle_length: " << boucle_length << std::endl;
+				
+					es_counter = 2 + descriptor_length; // (2 = bytes used by descriptor_tag and descriptor_length) + bytes used for description of destructor_tag
+				
+					std::cout << "program number: " << table_id_extension << std::endl;
 					std::cout << "descriptor_tag: " << descriptor_tag << " descriptor_length: " << descriptor_length;
 					std::cout << " descriptor_info: ";
 					for (int i = 1; i <= descriptor_length; i++)
-						std::cout << " " << std::bitset<8>(databuf_in[(x * packets_size) + 23 + boucle_length + es_counter + i]);
-					std::cout << std::endl << std::endl;
+						std::cout << " " << std::bitset<8>(databuf_in[(x * packets_size) + 23 + boucle_length + i]);
+					std::cout << std::endl;
 				
-					es_counter = es_counter + 2 + descriptor_length; // (2 = bytes used by descriptor_tag and descriptor_length) + bytes used for description of destructor_tag
+					while (es_counter != es_info_length_length)
+					{
+						descriptor_tag = databuf_in[(x * packets_size) + 22 + boucle_length + es_counter];
+						descriptor_length = databuf_in[(x * packets_size) + 23 + boucle_length + es_counter];
+					
+						std::cout << "descriptor_tag: " << descriptor_tag << " descriptor_length: " << descriptor_length;
+						std::cout << " descriptor_info: ";
+						for (int i = 1; i <= descriptor_length; i++)
+							std::cout << " " << std::bitset<8>(databuf_in[(x * packets_size) + 23 + boucle_length + es_counter + i]);
+						std::cout << std::endl << std::endl;
+				
+						es_counter = es_counter + 2 + descriptor_length; // (2 = bytes used by descriptor_tag and descriptor_length) + bytes used for description of destructor_tag
+					}
+					boucle_length = boucle_length + es_info_length_length + 5;
 				}
-				boucle_length = boucle_length + es_info_length_length + 5;
+			}
+			else
+			{
+				//find_packet_start_code_prefix_PES(packets_size, x, databuf_in, PID);
 			}
 		}
 	}
