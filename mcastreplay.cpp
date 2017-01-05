@@ -35,10 +35,6 @@ unsigned long long int				max_interval_value_between_packets = 0;
 unsigned long long int				max_interval_value_between_pcr = 0;
 static int							interval;
 
-static std::string 		s_ingroup;
-static int  			s_inport;
-static std::string 		s_inip;
-
 Pid_list	pid;
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
@@ -69,7 +65,7 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
     return res;
 }
 
-void	print()
+void	print(std::string inip, int inport)
 {
 	std::ofstream									fd_packets;
 	std::ofstream									fd_octets;
@@ -89,9 +85,9 @@ void	print()
 		// Ecriture des fichiers "pkts_in_ip_port du flux entrant_pidN" Pour tout N
 		try
 		{
-			fd.open(dest_info_file + "pkts_in_" + s_inip + "_" + std::to_string(s_inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
+			fd.open(dest_info_file + "pkts_in_" + inip + "_" + std::to_string(inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
 			if (fd.fail())
-				std::cerr << "Opening " << dest_info_file << "pkts_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
+				std::cerr << "Opening " << dest_info_file << "pkts_in_" << inip << "_" << std::to_string(inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
 			std::cout << "double cacule" << std::endl;
 			double packets_per_second = ((*pid_it).pkts_per_pids - (*pid_it).packet_per_pid_saved_value) / (double)interval;
 			std::cout << "end calcule" << std::endl;
@@ -108,9 +104,9 @@ void	print()
 		// Ecriture des fichiers "continuity_error_in_ip_port du flux entrant_pidN" Pour tout N
 		try
 		{
-			fd.open(dest_info_file + "continuity_error_in_" + s_inip + "_" + std::to_string(s_inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
+			fd.open(dest_info_file + "continuity_error_in_" + inip + "_" + std::to_string(inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
 			if (fd.fail())
-				std::cerr << "Opening " << dest_info_file << "continuity_error_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
+				std::cerr << "Opening " << dest_info_file << "continuity_error_in_" << inip << "_" << std::to_string(inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
 			std::cout << "PID: " << (*pid_it).pid << " = " << (*pid_it).continuity_error_per_pid << " continuity errors" << std::endl;
 			fd << (*pid_it).continuity_error_per_pid << std::endl;
 			fd.flush();
@@ -169,10 +165,14 @@ void	print()
 	saved_value = octets_read;
 	
 	std::cout << "end start" << std::endl;
-	print();
+	print(inip, inport);
 }
 
-int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl)
+
+int	init (int argc, char **argv, std::string &ingroup_main, int &inport_main, std::string &inip_main, std::string &outgroup_main, 
+									int &outport_main, std::string &outip_main, int &ttl_main,
+								 std::string &ingroup_second, int &inport_second, std::string &inip_second, std::string &outgroup_second, 
+									int &outport_second, std::string &outip_second, int &ttl_second)
 {
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
@@ -180,31 +180,41 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 	std::string config_file = DEFAULT_FILE_CONFIG;
 	
 	file_description.add_options()
-	("In.Group", boost::program_options::value<std::string>(&s_ingroup)->default_value(""), "Group In")
-	("In.Ip", boost::program_options::value<std::string>(&s_inip)->default_value(""), "Ip In")
-	("In.Port", boost::program_options::value<int>(&s_inport)->default_value(0), "Port In")
-	("Out.Group", boost::program_options::value<std::string>(&s_outgroup)->default_value(""), "Group Out")
-	("Out.Ip", boost::program_options::value<std::string>(&s_outip)->default_value(""), "Ip Out")
-	("Out.Port", boost::program_options::value<int>(&s_outport)->default_value(0), "Port Out")
-	("Out.Ttl", boost::program_options::value<int>(&ttl)->default_value(0), "Ttl Out")
-	("Out.StatsPath", boost::program_options::value<std::string>(&dest_info_file)->default_value(""), "Stats Path")
-	("Out.Interval", boost::program_options::value<int>(&interval)->default_value(DEFAULT_SLEEP_DURATION), "Interval between each print out/file in seconds");
+	("InMain.Group", boost::program_options::value<std::string>(&ingroup_main)->default_value(""), "Group Main In")
+	("InMain.Ip", boost::program_options::value<std::string>(&inip_main)->default_value(""), "Ip Main In")
+	("InMain.Port", boost::program_options::value<int>(&inport_main)->default_value(0), "Port Main In")
+	("OutMain.Group", boost::program_options::value<std::string>(&outgroup_main)->default_value(""), "Group Main Out")
+	("OutMain.Ip", boost::program_options::value<std::string>(&outip_main)->default_value(""), "Ip Main Out")
+	("OutMain.Port", boost::program_options::value<int>(&outport_main)->default_value(0), "Port Main Out")
+	("OutMain.Ttl", boost::program_options::value<int>(&ttl_main)->default_value(0), "Ttl Main Out")
+	("OutMain.StatsPath", boost::program_options::value<std::string>(&dest_info_file)->default_value(""), "Main Stats Path")
+	("OutMain.Interval", boost::program_options::value<int>(&interval)->default_value(DEFAULT_SLEEP_DURATION), "Main Interval between each print out/file in seconds")
+	
+	("InSecond.Group", boost::program_options::value<std::string>(&ingroup_second)->default_value(""), "Group Main In")
+	("InSecond.Ip", boost::program_options::value<std::string>(&inip_second)->default_value(""), "Ip Main In")
+	("InSecond.Port", boost::program_options::value<int>(&inport_second)->default_value(0), "Port Main In")
+	("OutSecond.Group", boost::program_options::value<std::string>(&outgroup_second)->default_value(""), "Group Main Out")
+	("OutSecond.Ip", boost::program_options::value<std::string>(&outip_second)->default_value(""), "Ip Main Out")
+	("OutSecond.Port", boost::program_options::value<int>(&outport_second)->default_value(0), "Port Main Out")
+	("OutSecond.Ttl", boost::program_options::value<int>(&ttl_second)->default_value(0), "Ttl Main Out")
+	("OutSecond.StatsPath", boost::program_options::value<std::string>(&dest_info_file)->default_value(""), "Main Stats Path")
+	("OutSecond.Interval", boost::program_options::value<int>(&interval)->default_value(DEFAULT_SLEEP_DURATION), "Main Interval between each print out/file in seconds");
 	
 	// Option from Command Line recuperation
 	boost::program_options::options_description description("Command Line Options");
 	boost::program_options::variables_map boost_map;
 	
 	description.add_options()
-	("ingroup", boost::program_options::value<std::string>(&s_ingroup), "Group In")
-	("inip", boost::program_options::value<std::string>(&s_inip), "Ip In")
-	("inport", boost::program_options::value<int>(&s_inport), "Port In")
-	("outgroup", boost::program_options::value<std::string>(&s_outgroup), "Group Out")
-	("outip", boost::program_options::value<std::string>(&s_outip), "Ip Out")
-	("outport", boost::program_options::value<int>(&s_outport), "Port Out")
-	("statspath", boost::program_options::value<std::string>(&dest_info_file), "Stats Path")
-	("config", boost::program_options::value<std::string>(&config_file), "Config File Name")
-	("ttl", boost::program_options::value<int>(&ttl), "Ttl Out")
-	("interval", boost::program_options::value<int>(&interval), "Interval between each print out/file in seconds")
+	("ingroup_main", boost::program_options::value<std::string>(&ingroup_main), "Group In")
+	("inip_main", boost::program_options::value<std::string>(&inip_main), "Ip In")
+	("inport_main", boost::program_options::value<int>(&inport_main), "Port In")
+	("outgroup_main", boost::program_options::value<std::string>(&outgroup_main), "Group Out")
+	("outip_main", boost::program_options::value<std::string>(&outip_main), "Ip Out")
+	("outport_main", boost::program_options::value<int>(&outport_main), "Port Out")
+	("statspath_main", boost::program_options::value<std::string>(&dest_info_file), "Stats Path")
+	("config_main", boost::program_options::value<std::string>(&config_file), "Config File Name")
+	("ttl_main", boost::program_options::value<int>(&ttl_main), "Ttl Out")
+	("interval_main", boost::program_options::value<int>(&interval), "Interval between each print out/file in seconds")
 	("help", "Help Screen");
 	
 	try
@@ -231,7 +241,7 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 		return (1);
 	}
 	
-	if (s_ingroup.empty() == true || s_inip.empty() == true || s_inport == 0 || s_outgroup.empty() == true || s_outip.empty() == true || s_outport == 0 || ttl == 0)
+	if (ingroup_main.empty() == true || inip_main.empty() == true || inport_main == 0 || outgroup_main.empty() == true || outip_main.empty() == true || outport_main == 0 || ttl_main == 0)
 	{
 		std::cerr << "Group, Ip, Port from In/Out and Ttl Out needed to run it" << std::endl;
 		std::cerr << description << std::endl << file_description << std::endl;
@@ -560,7 +570,8 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 	return (0);
 }
 
-int	main(int argc, char **argv)
+int	flux_start(bool active, std::string ingroup, int inport, std::string inip, std::string outgroup, int outport, std::string outip,
+				int ttl = 0)
 {
 	struct 					in_addr localInterface;
     struct 					sockaddr_in groupSock;
@@ -573,20 +584,12 @@ int	main(int argc, char **argv)
     int 					datalen_in;
     char 					databuf_in[16384];
 	
-	static std::string		s_outgroup; 
-    static int				s_outport;
-    static std::string 		s_outip;
-	
 	struct sockaddr_storage my_addr;
     struct addrinfo 		*res0 = 0;
     int 					addr_len;
 	
-	int ttl = 0;
 	
-	if (init(argc, argv, s_ingroup, s_inport, s_inip, s_outgroup, s_outport, s_outip, ttl) == 1)
-		return (1);
-	
-	res0 = udp_resolve_host( 0, s_outport, SOCK_DGRAM, AF_INET, AI_PASSIVE );
+	res0 = udp_resolve_host( 0, outport, SOCK_DGRAM, AF_INET, AI_PASSIVE );
      if( res0 == 0 ) {
 		 std::cerr << "udp_resolve_host failed" << std::endl;
 		return(1);
@@ -609,8 +612,8 @@ int	main(int argc, char **argv)
     /* group address of 225.1.1.1 and port 5555. */
     memset((char *) &groupSock, 0, sizeof(groupSock));
     groupSock.sin_family = AF_INET;
-    groupSock.sin_addr.s_addr = inet_addr(s_outgroup.c_str());
-    groupSock.sin_port = htons(s_outport);
+    groupSock.sin_addr.s_addr = inet_addr(outgroup.c_str());
+    groupSock.sin_port = htons(outport);
 
     {
       int reuse = 1;
@@ -646,7 +649,7 @@ int	main(int argc, char **argv)
     /* The IP address specified must be associated with a local, */
     /* multicast capable interface. */
 
-    localInterface.s_addr = inet_addr(s_outip.c_str());
+    localInterface.s_addr = inet_addr(outip.c_str());
     if(setsockopt(sd_out, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) < 0) {
       std::cerr << "Setting local out interface error" << std::endl;
       return(1);
@@ -704,9 +707,9 @@ int	main(int argc, char **argv)
     /* specified as INADDR_ANY. */
     memset((char *) &localSock, 0, sizeof(localSock));
     localSock.sin_family = AF_INET;
-    localSock.sin_port = htons(s_inport);
+    localSock.sin_port = htons(inport);
     //localSock.sin_addr.s_addr = INADDR_ANY; Dangereux! Pas de filtrage!
-    localSock.sin_addr.s_addr = inet_addr(s_ingroup.c_str());
+    localSock.sin_addr.s_addr = inet_addr(ingroup.c_str());
     if(bind(sd_in, (struct sockaddr*)&localSock, sizeof(localSock))) {
       std::cerr << "Binding datagram socket in error" << std::endl;
       close(sd_in);
@@ -720,8 +723,8 @@ int	main(int argc, char **argv)
     /* interface. Note that this IP_ADD_MEMBERSHIP option must be */
     /* called for each local interface over which the multicast */
     /* datagrams are to be received. */
-    group.imr_multiaddr.s_addr = inet_addr(s_ingroup.c_str());
-    group.imr_interface.s_addr = inet_addr(s_inip.c_str());
+    group.imr_multiaddr.s_addr = inet_addr(ingroup.c_str());
+    group.imr_interface.s_addr = inet_addr(inip.c_str());
     if(setsockopt(sd_in, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&group, sizeof(group)) < 0) {
       std::cerr << "Adding multicast group in error" << std::endl;
       close(sd_in);
@@ -733,14 +736,36 @@ int	main(int argc, char **argv)
     /* Read from the socket. */
     datalen_in = sizeof(databuf_in);
 	
-	std::thread t(print);
+	if (active == true)
+		std::thread t(print, inip, inport);
 	
 	//First time getter
 	boost::posix_time::ptime last_time = boost::posix_time::microsec_clock::local_time();
 	boost::posix_time::ptime last_time_pcr = last_time;
 	
+	/*fd_set	fd_input;
+	struct timeval	tv;
+	int retval;
+	
+	FD_ZERO(&fd_input);
+	FD_SET(sd_in, &fd_input);
+	tv.tv_sec = 5;
+	tv.tv_usec = 0;*/
+	
     while(1) {
-      datalen_out = read(sd_in, databuf_in, datalen_in);
+		/*retval = select(sd_in + 1, &fd_input, NULL, NULL, &tv);
+		if (retval) // changement d'état détecter
+		{
+			std::cout << "Changement d'état détecter" << std::endl;
+			exit(0);
+		}
+		else // select time out
+		{
+			std::cout << "Aucun changement d'état détecter depuis 5 sec" << std::endl;
+			exit(0);
+		}*/
+      
+		datalen_out = read(sd_in, databuf_in, datalen_in);
 		// Calcule en milliseconds de l'intervale de reception de chaque packets
 		boost::posix_time::ptime actual_time  = boost::posix_time::microsec_clock::local_time();
 		boost::posix_time::time_duration diff = actual_time - last_time;
@@ -748,30 +773,55 @@ int	main(int argc, char **argv)
 			max_interval_value_between_packets = diff.total_milliseconds();
 		last_time = actual_time;
 	  
-      if(datalen_out < 0) {
-        std::cerr << "Reading datagram im message error" << std::endl;
-        close(sd_in);
-        close(sd_out);
-        return(1);
-      } else {
+		if(datalen_out < 0) 
+		{
+			std::cerr << "Reading datagram im message error" << std::endl;
+			close(sd_in);
+			close(sd_out);
+			return(1);
+		} else {
         //printf("Reading datagram message in ...OK.\n");
 		//std::cout << " **r: " << databuf_in << "  " <<strlen(databuf_in) << "**";
     //    printf("The message from multicast server in is: \"%s\"\n", databuf_in);
       }
-	  
-      if(sendto(sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0) {
-         std::cerr << "Sending datagram message out error" << std::endl;
-      } else {
-        //printf("Sending datagram message out...OK\n");
-		//std::cout << " w ";
-		/*for (int i = 0; i != strlen(databuf_in); i++)
-			std::cout << std::bitset<8>(databuf_in[i]) << " ";*/
-		//std::cout << " w: " << databuf_in << " size: " << strlen(databuf_in);
-		/*int len = strlen(databuf_in);
-		if (len > 3)
-		{*/
+		if (active == true)
+			if(sendto(sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
+				std::cerr << "Sending datagram message out error" << std::endl;
+			//printf("Sending datagram message out...OK\n");
+			//std::cout << " w ";
+			/*for (int i = 0; i != strlen(databuf_in); i++)
+				std::cout << std::bitset<8>(databuf_in[i]) << " ";*/
+			//std::cout << " w: " << databuf_in << " size: " << strlen(databuf_in);
+			/*int len = strlen(databuf_in);
+			if (len > 3)
+			{*/
 		packet_monitoring(databuf_in, datalen_out, last_time_pcr);
-      }
     }
+	return (0);
+}
+
+int	main(int argc, char **argv)
+{
+	std::string 	ingroup_main;
+	int  			inport_main;
+	std::string 	inip_main;
+	std::string		outgroup_main; 
+    int				outport_main;
+    std::string 	outip_main;
+	int 			ttl_main = 0;
+	
+	std::string 	ingroup_second;
+	int  			inport_second;
+	std::string 	inip_second;
+	std::string		outgroup_second; 
+    int				outport_second;
+    std::string 	outip_second;
+	int 			ttl_second = 0;
+	
+	if (init(argc, argv, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main,
+						ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second) == 1)
+		return (1);
+	std::thread primary(flux_start,true, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main);
+	std::thread secondary(flux_start,false, ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second);
 	return (0);
 }
