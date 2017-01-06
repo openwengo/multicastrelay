@@ -35,6 +35,9 @@ unsigned long long int				max_interval_value_between_packets = 0;
 unsigned long long int				max_interval_value_between_pcr = 0;
 static int							interval;
 
+int counter001 = 0;
+int counter000 = 0;
+
 static std::string 		s_ingroup;
 static int  			s_inport;
 static std::string 		s_inip;
@@ -168,6 +171,7 @@ void	print()
 	fd_interval_pcr.close();
 	saved_value = octets_read;
 	
+	std::cout << "counter000 " << counter000 << "\ncounter001 " << counter001 << std::endl;
 	std::cout << "end start" << std::endl;
 	print();
 }
@@ -535,11 +539,11 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 					{
 						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **00 1*** Adaptation Field Control = 00 and Discontinuity Indicator = 1
 						{
-						
+							++counter001;
 						}
 						else // **00 0*** Adaptation Field Control = 00 and Discontinuity Indicator = 0
 						{
-						
+							++counter000;
 						}
 					}
 				}
