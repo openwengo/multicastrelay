@@ -22,20 +22,11 @@
 #include <boost/asio.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
+#include "packets_general_info.hpp"
 #include "pid.hpp"
 
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
 #define DEFAULT_SLEEP_DURATION 60
-
-std::list<short> 					pid_list;
-unsigned long long int				packets_read = 0;
-unsigned long long int				octets_read = 0;
-std::string							dest_info_file;
-unsigned long long int				max_interval_value_between_packets = 0;
-unsigned long long int				max_interval_value_between_pcr = 0;
-static int							interval;
-
-Pid_list	pid;
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
@@ -65,7 +56,7 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
     return res;
 }
 
-void	print(std::string inip, int inport)
+void	print(std::string inip, int inport, std::string dest_info_file, int interval, Pid_list &pid, Packet_info &packet, bool *active)
 {
 	std::ofstream									fd_packets;
 	std::ofstream									fd_octets;
@@ -77,102 +68,106 @@ void	print(std::string inip, int inport)
 	unsigned long int								debit;
 	std::list<Pid>::iterator						pid_it;
 	
-	std::cout << "print start" << std::endl;
 	sleep(interval);
-
-	for (pid_it = pid.pid_list.begin(); pid_it != pid.pid_list.end(); pid_it++)
+	if (*active == true)
 	{
-		// Ecriture des fichiers "pkts_in_ip_port du flux entrant_pidN" Pour tout N
-		try
+		std::cout << "print start" << std::endl;
+		for (pid_it = pid.pid_list.begin(); pid_it != pid.pid_list.end(); pid_it++)
 		{
-			fd.open(dest_info_file + "pkts_in_" + inip + "_" + std::to_string(inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
-			if (fd.fail())
-				std::cerr << "Opening " << dest_info_file << "pkts_in_" << inip << "_" << std::to_string(inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
-			std::cout << "double cacule" << std::endl;
-			double packets_per_second = ((*pid_it).pkts_per_pids - (*pid_it).packet_per_pid_saved_value) / (double)interval;
-			std::cout << "end calcule" << std::endl;
-			(*pid_it).packet_per_pid_saved_value = (*pid_it).pkts_per_pids;
-			fd << packets_per_second << std::endl;
-			fd.flush();
-		}
-		catch(std::exception &e)
-		{
-			std::cerr << "Exception: " << e.what() << std::endl;
-		}
-		fd.close();
+			// Ecriture des fichiers "pkts_in_ip_port du flux entrant_pidN" Pour tout N
+			try
+			{
+				fd.open(dest_info_file + "pkts_in_" + inip + "_" + std::to_string(inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
+				if (fd.fail())
+					std::cerr << "Opening " << dest_info_file << "pkts_in_" << inip << "_" << std::to_string(inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
+				std::cout << "double cacule" << std::endl;
+				double packets_per_second = ((*pid_it).pkts_per_pids - (*pid_it).packet_per_pid_saved_value) / (double)interval;
+				std::cout << "end calcule" << std::endl;
+				(*pid_it).packet_per_pid_saved_value = (*pid_it).pkts_per_pids;
+				fd << packets_per_second << std::endl;
+				fd.flush();
+			}
+			catch(std::exception &e)
+			{
+				std::cerr << "Exception: " << e.what() << std::endl;
+			}
+			fd.close();
 		
-		// Ecriture des fichiers "continuity_error_in_ip_port du flux entrant_pidN" Pour tout N
+			// Ecriture des fichiers "continuity_error_in_ip_port du flux entrant_pidN" Pour tout N
+			try
+			{
+				fd.open(dest_info_file + "continuity_error_in_" + inip + "_" + std::to_string(inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
+				if (fd.fail())
+					std::cerr << "Opening " << dest_info_file << "continuity_error_in_" << inip << "_" << std::to_string(inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
+				std::cout << "PID: " << (*pid_it).pid << " = " << (*pid_it).continuity_error_per_pid << " continuity errors" << std::endl;
+				fd << (*pid_it).continuity_error_per_pid << std::endl;
+				fd.flush();
+			}
+			catch(std::exception &e)
+			{
+				std::cerr << "Exception: " << e.what() << std::endl;
+			}
+			fd.close();
+		}
+		std::cout << "midle start" << std::endl;
+		// Ecriture des Fichiers Octects.txt Packets.txt Debit.txt
+		debit = ((packet.octets_read - saved_value) * 8) / (int)interval; // get debit = bite per second
+		std::cout << "packet.packets_read: " << packet.packets_read << std::endl;
+		std::cout << "packet.octets_read: " << packet.octets_read << std::endl;
+		std::cout << "debit: " << debit << std::endl;
+		std::cout << "interval max between two packets: " << packet.max_interval_value_between_packets << " milliseconds" << std::endl;
+		std::cout << "interval max between two packets with pcr: " << packet.max_interval_value_between_pcr << " milliseconds" << std::endl;
 		try
 		{
-			fd.open(dest_info_file + "continuity_error_in_" + inip + "_" + std::to_string(inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
-			if (fd.fail())
-				std::cerr << "Opening " << dest_info_file << "continuity_error_in_" << inip << "_" << std::to_string(inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
-			std::cout << "PID: " << (*pid_it).pid << " = " << (*pid_it).continuity_error_per_pid << " continuity errors" << std::endl;
-			fd << (*pid_it).continuity_error_per_pid << std::endl;
-			fd.flush();
+			fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_interval.open(dest_info_file + "Millisecond_intervale_max_between_packets.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_interval_pcr.open(dest_info_file + "Millisecond_intervale_max_between_packets_pcr.txt", std::ofstream::out | std::ofstream::trunc);
+			if (fd_packets.fail())
+				std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
+			if (fd_octets.fail())
+				std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
+			if (fd_debit.fail())
+				std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
+			if (fd_interval.fail())
+				std::cerr << "Opening " << dest_info_file << "Millisecond_intervale_max_between_packets.txt failed" << std::endl;
+			if (fd_interval_pcr.fail())
+				std::cerr << "Opening " << dest_info_file << "Millisecond_intervale_max_between_packets_pcr.txt failed" << std::endl;
+			fd_packets << packet.packets_read << std::endl;
+			fd_packets.flush();
+			fd_octets << packet.octets_read << std::endl;
+			fd_octets.flush();
+			fd_debit << debit << std::endl;
+			fd_debit.flush();
+			fd_interval << packet.max_interval_value_between_packets << std::endl;
+			fd_interval.flush();
+			fd_interval_pcr << packet.max_interval_value_between_pcr << std::endl;
+			fd_interval_pcr.flush();
 		}
 		catch(std::exception &e)
 		{
 			std::cerr << "Exception: " << e.what() << std::endl;
 		}
-		fd.close();
-	}
-	std::cout << "midle start" << std::endl;
-	// Ecriture des Fichiers Octects.txt Packets.txt Debit.txt
-	debit = ((octets_read - saved_value) * 8) / interval; // get debit = bite per second
-	std::cout << "packets_read: " << packets_read << std::endl;
-	std::cout << "octets_read: " << octets_read << std::endl;
-	std::cout << "debit: " << debit << std::endl;
-	std::cout << "interval max between two packets: " << max_interval_value_between_packets << " milliseconds" << std::endl;
-	std::cout << "interval max between two packets with pcr: " << max_interval_value_between_pcr << " milliseconds" << std::endl;
-	try
-	{
-		fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_interval.open(dest_info_file + "Millisecond_intervale_max_between_packets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_interval_pcr.open(dest_info_file + "Millisecond_intervale_max_between_packets_pcr.txt", std::ofstream::out | std::ofstream::trunc);
-		if (fd_packets.fail())
-			std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
-		if (fd_octets.fail())
-			std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
-		if (fd_debit.fail())
-			std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
-		if (fd_interval.fail())
-			std::cerr << "Opening " << dest_info_file << "Millisecond_intervale_max_between_packets.txt failed" << std::endl;
-		if (fd_interval_pcr.fail())
-			std::cerr << "Opening " << dest_info_file << "Millisecond_intervale_max_between_packets_pcr.txt failed" << std::endl;
-		fd_packets << packets_read << std::endl;
-		fd_packets.flush();
-		fd_octets << octets_read << std::endl;
-		fd_octets.flush();
-		fd_debit << debit << std::endl;
-		fd_debit.flush();
-		fd_interval << max_interval_value_between_packets << std::endl;
-		fd_interval.flush();
-		fd_interval_pcr << max_interval_value_between_pcr << std::endl;
-		fd_interval_pcr.flush();
-	}
-	catch(std::exception &e)
-	{
-		std::cerr << "Exception: " << e.what() << std::endl;
-	}
-	fd_packets.close();
-	fd_octets.close();
-	fd_debit.close();
-	fd_interval.close();
-	fd_interval_pcr.close();
-	saved_value = octets_read;
+		fd_packets.close();
+		fd_octets.close();
+		fd_debit.close();
+		fd_interval.close();
+		fd_interval_pcr.close();
+		saved_value = packet.octets_read;
 	
-	std::cout << "end start" << std::endl;
-	print(inip, inport);
+		std::cout << "packet.counter000 " << packet.counter000 << " packet.counter001 " << packet.counter001 << std::endl;
+		std::cout << "end start" << std::endl;
+	}
+	print(inip, inport, dest_info_file, interval, pid, packet, active);
 }
 
 
 int	init (int argc, char **argv, std::string &ingroup_main, int &inport_main, std::string &inip_main, std::string &outgroup_main, 
 									int &outport_main, std::string &outip_main, int &ttl_main,
 								 std::string &ingroup_second, int &inport_second, std::string &inip_second, std::string &outgroup_second, 
-									int &outport_second, std::string &outip_second, int &ttl_second)
+									int &outport_second, std::string &outip_second, int &ttl_second,
+									std::string &dest_info_file_main, std::string &dest_info_file_second, int &interval_main, int &interval_second)
 {
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
@@ -180,41 +175,49 @@ int	init (int argc, char **argv, std::string &ingroup_main, int &inport_main, st
 	std::string config_file = DEFAULT_FILE_CONFIG;
 	
 	file_description.add_options()
-	("InMain.Group", boost::program_options::value<std::string>(&ingroup_main)->default_value(""), "Group Main In")
-	("InMain.Ip", boost::program_options::value<std::string>(&inip_main)->default_value(""), "Ip Main In")
-	("InMain.Port", boost::program_options::value<int>(&inport_main)->default_value(0), "Port Main In")
-	("OutMain.Group", boost::program_options::value<std::string>(&outgroup_main)->default_value(""), "Group Main Out")
-	("OutMain.Ip", boost::program_options::value<std::string>(&outip_main)->default_value(""), "Ip Main Out")
-	("OutMain.Port", boost::program_options::value<int>(&outport_main)->default_value(0), "Port Main Out")
-	("OutMain.Ttl", boost::program_options::value<int>(&ttl_main)->default_value(0), "Ttl Main Out")
-	("OutMain.StatsPath", boost::program_options::value<std::string>(&dest_info_file)->default_value(""), "Main Stats Path")
-	("OutMain.Interval", boost::program_options::value<int>(&interval)->default_value(DEFAULT_SLEEP_DURATION), "Main Interval between each print out/file in seconds")
-	
-	("InSecond.Group", boost::program_options::value<std::string>(&ingroup_second)->default_value(""), "Group Main In")
-	("InSecond.Ip", boost::program_options::value<std::string>(&inip_second)->default_value(""), "Ip Main In")
-	("InSecond.Port", boost::program_options::value<int>(&inport_second)->default_value(0), "Port Main In")
-	("OutSecond.Group", boost::program_options::value<std::string>(&outgroup_second)->default_value(""), "Group Main Out")
-	("OutSecond.Ip", boost::program_options::value<std::string>(&outip_second)->default_value(""), "Ip Main Out")
-	("OutSecond.Port", boost::program_options::value<int>(&outport_second)->default_value(0), "Port Main Out")
-	("OutSecond.Ttl", boost::program_options::value<int>(&ttl_second)->default_value(0), "Ttl Main Out")
-	("OutSecond.StatsPath", boost::program_options::value<std::string>(&dest_info_file)->default_value(""), "Main Stats Path")
-	("OutSecond.Interval", boost::program_options::value<int>(&interval)->default_value(DEFAULT_SLEEP_DURATION), "Main Interval between each print out/file in seconds");
+	("InMain.Group", boost::program_options::value<std::string>(&ingroup_main)->default_value(""), 						"Group Main In")
+	("InMain.Ip", boost::program_options::value<std::string>(&inip_main)->default_value(""), 							"Ip Main In")
+	("InMain.Port", boost::program_options::value<int>(&inport_main)->default_value(0), 								"Port Main In")
+	("OutMain.Group", boost::program_options::value<std::string>(&outgroup_main)->default_value(""), 					"Group Main Out")
+	("OutMain.Ip", boost::program_options::value<std::string>(&outip_main)->default_value(""), 							"Ip Main Out")
+	("OutMain.Port", boost::program_options::value<int>(&outport_main)->default_value(0), 								"Port Main Out")
+	("OutMain.Ttl", boost::program_options::value<int>(&ttl_main)->default_value(0), 									"Ttl Main Out")
+	("OutMain.StatsPath", boost::program_options::value<std::string>(&dest_info_file_main)->default_value(""), 			"Main Stats Path")
+	("OutMain.Interval", boost::program_options::value<int>(&interval_main)->default_value(DEFAULT_SLEEP_DURATION),		"Main Interval between each print out/file in seconds")
+	("InSecond.Group", boost::program_options::value<std::string>(&ingroup_second)->default_value(""), 					"Group Second In")
+	("InSecond.Ip", boost::program_options::value<std::string>(&inip_second)->default_value(""), 						"Ip Second In")
+	("InSecond.Port", boost::program_options::value<int>(&inport_second)->default_value(0), 							"Port Second In")
+	("OutSecond.Group", boost::program_options::value<std::string>(&outgroup_second)->default_value(""), 				"Group Second Out")
+	("OutSecond.Ip", boost::program_options::value<std::string>(&outip_second)->default_value(""), 						"Ip Second Out")
+	("OutSecond.Port", boost::program_options::value<int>(&outport_second)->default_value(0),							"Port Second Out")
+	("OutSecond.Ttl", boost::program_options::value<int>(&ttl_second)->default_value(0),								"Ttl Second Out")
+	("OutSecond.StatsPath", boost::program_options::value<std::string>(&dest_info_file_second)->default_value(""), 		"Second Stats Path")
+	("OutSecond.Interval", boost::program_options::value<int>(&interval_second)->default_value(DEFAULT_SLEEP_DURATION),	"Second Interval between each print out/file in seconds");
 	
 	// Option from Command Line recuperation
 	boost::program_options::options_description description("Command Line Options");
 	boost::program_options::variables_map boost_map;
 	
 	description.add_options()
-	("ingroup_main", boost::program_options::value<std::string>(&ingroup_main), "Group In")
-	("inip_main", boost::program_options::value<std::string>(&inip_main), "Ip In")
-	("inport_main", boost::program_options::value<int>(&inport_main), "Port In")
-	("outgroup_main", boost::program_options::value<std::string>(&outgroup_main), "Group Out")
-	("outip_main", boost::program_options::value<std::string>(&outip_main), "Ip Out")
-	("outport_main", boost::program_options::value<int>(&outport_main), "Port Out")
-	("statspath_main", boost::program_options::value<std::string>(&dest_info_file), "Stats Path")
-	("config_main", boost::program_options::value<std::string>(&config_file), "Config File Name")
-	("ttl_main", boost::program_options::value<int>(&ttl_main), "Ttl Out")
-	("interval_main", boost::program_options::value<int>(&interval), "Interval between each print out/file in seconds")
+	("ingroup_main", boost::program_options::value<std::string>(&ingroup_main), 			"Main Group In")
+	("inip_main", boost::program_options::value<std::string>(&inip_main), 					"Main Ip In")
+	("inport_main", boost::program_options::value<int>(&inport_main), 						"Main Port In")
+	("outgroup_main", boost::program_options::value<std::string>(&outgroup_main), 			"Main Group Out")
+	("outip_main", boost::program_options::value<std::string>(&outip_main), 				"MainIp Out")
+	("outport_main", boost::program_options::value<int>(&outport_main), 					"Main Port Out")
+	("ttl_main", boost::program_options::value<int>(&ttl_main), 							"Main Ttl Out")
+	("statspath_main", boost::program_options::value<std::string>(&dest_info_file_main),"Main Stats Path")
+	("interval_main", boost::program_options::value<int>(&interval_main), 				"Main Interval between each print out/file in seconds")
+	("ingroup_second", boost::program_options::value<std::string>(&ingroup_second), 		"Second Group In")
+	("inip_second", boost::program_options::value<std::string>(&inip_second), 				"Second Ip In")
+	("inport_second", boost::program_options::value<int>(&inport_second), 					"Second Port In")
+	("outgroup_second", boost::program_options::value<std::string>(&outgroup_second), 		"Second Group Out")
+	("outip_second", boost::program_options::value<std::string>(&outip_second), 			"Second Ip Out")
+	("outport_second", boost::program_options::value<int>(&outport_second), 				"Second Port Out")
+	("ttl_second", boost::program_options::value<int>(&ttl_second), 						"Second Ttl Out")
+	("statspath_second", boost::program_options::value<std::string>(&dest_info_file_second),"Second Stats Path")
+	("interval_second", boost::program_options::value<int>(&interval_second), 				"Second Interval between each print out/file in seconds")
+	("config", boost::program_options::value<std::string>(&config_file), 					"Config File Name")
 	("help", "Help Screen");
 	
 	try
@@ -241,9 +244,12 @@ int	init (int argc, char **argv, std::string &ingroup_main, int &inport_main, st
 		return (1);
 	}
 	
-	if (ingroup_main.empty() == true || inip_main.empty() == true || inport_main == 0 || outgroup_main.empty() == true || outip_main.empty() == true || outport_main == 0 || ttl_main == 0)
+	if (ingroup_main.empty() == true || inip_main.empty() == true || inport_main == 0 || outgroup_main.empty() == true || 
+		outip_main.empty() == true || outport_main == 0 || ttl_main == 0 || 
+		ingroup_second.empty() == true || inip_second.empty() == true || inport_second == 0 || outgroup_second.empty() == true || 
+		outip_second.empty() == true || outport_second == 0 || ttl_second == 0)
 	{
-		std::cerr << "Group, Ip, Port from In/Out and Ttl Out needed to run it" << std::endl;
+		std::cerr << "Group, Ip, Port from In/Out and Ttl Out for Main and Second process needed to run it" << std::endl;
 		std::cerr << description << std::endl << file_description << std::endl;
 		return (1);
 	}
@@ -271,7 +277,7 @@ int	packet_size_guessing(char databuf_in[16384], int size_read)
 }
 
 // 00000000 00000000 00000001 (1110**** for video or 110***** for audio) = PES start code
-int	PES_analysis(int &packets_size, int &x, char databuf_in[16384], short PID, std::list<Pid>::iterator pid_it)
+int	PES_analysis(int &packets_size, int &x, char databuf_in[16384], short PID, std::list<Pid>::iterator pid_it, Pid_list &pid)
 {
 	
 	// IN test, arrange this function when finished
@@ -321,7 +327,7 @@ int	PES_analysis(int &packets_size, int &x, char databuf_in[16384], short PID, s
 	std::cout << std::endl;*/
 }
 
-void	PMT_analysis(char databuf_in[16384], int &x, int &packets_size, short &section_length, std::list<Pid>::iterator pid_it)
+void	PMT_analysis(char databuf_in[16384], int &x, int &packets_size, short &section_length, std::list<Pid>::iterator pid_it, Pid_list &pid)
 {
 	//octet 13 14 pcr pid
 	short pcr_pid = ((databuf_in[(x * packets_size) + 13] & 0x1f) << 8) | (databuf_in[(x * packets_size) + 14] & 0xff);
@@ -399,7 +405,7 @@ void	PMT_analysis(char databuf_in[16384], int &x, int &packets_size, short &sect
 	}
 }
 
-void	PAT_analysis(char databuf_in[16384], int &x, int &packets_size, short &section_length, std::list<Pid>::iterator pid_it)
+void	PAT_analysis(char databuf_in[16384], int &x, int &packets_size, short &section_length, std::list<Pid>::iterator pid_it, Pid_list &pid)
 {
 	short pat_repetition_size = 4;
 	short repetition = 0;
@@ -428,7 +434,7 @@ void	PAT_analysis(char databuf_in[16384], int &x, int &packets_size, short &sect
 	}
 }
 
-int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_time::ptime &last_time_pcr)
+int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_time::ptime &last_time_pcr, Pid_list &pid, Packet_info &packet)
 {
 	std::list<Pid>::iterator pid_it;
 	int packets_size;
@@ -436,10 +442,9 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 		return (1);
 	int packets_per_read = datalen_out / packets_size;
 		
-	packets_read = packets_read + packets_per_read;
-	octets_read = octets_read + datalen_out;
-		
-		
+	packet.packets_read = packet.packets_read + packets_per_read;
+	packet.octets_read = packet.octets_read + datalen_out;
+	
 	// découpage packets lu par chaque read, creation list de pid et un vector permetant de compter packet par pid		
 	for (int x = 0; x != packets_per_read; x++)
 	{
@@ -476,18 +481,16 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 				}
 			//PSI
 			else if (PID == 0) // PAT
-				PAT_analysis(databuf_in, x, packets_size, section_length, pid_it);
+				PAT_analysis(databuf_in, x, packets_size, section_length, pid_it, pid);
 			// PMT
-			else if ((*pid_it).description == "PMT")		
-				PMT_analysis(databuf_in, x, packets_size, section_length, pid_it);
+			else if (pid_it != pid.pid_list.end() && (*pid_it).description == "PMT")		
+				PMT_analysis(databuf_in, x, packets_size, section_length, pid_it, pid);
 			// PES
-			else if ((*pid_it).type == "PES")
-				PES_analysis(packets_size, x, databuf_in, PID, pid_it);
+			else if (pid_it != pid.pid_list.end() && (*pid_it).type == "PES")
+				PES_analysis(packets_size, x, databuf_in, PID, pid_it, pid);
 
-			
 			//pid_it = pid.find_pid(PID);
 			(*pid_it).pkts_per_pids = (*pid_it).pkts_per_pids + 1;
-			
 			int continuity = databuf_in[(x * packets_size) + 3] & 0x0F;
 		
 			// Continuity Error Check
@@ -545,11 +548,11 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 					{
 						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **00 1*** Adaptation Field Control = 00 and Discontinuity Indicator = 1
 						{
-						
+							++packet.counter001;
 						}
 						else // **00 0*** Adaptation Field Control = 00 and Discontinuity Indicator = 0
 						{
-						
+							++packet.counter000;
 						}
 					}
 				}
@@ -561,8 +564,8 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 			{
 				boost::posix_time::ptime actual_time_pcr = boost::posix_time::microsec_clock::local_time();
 				boost::posix_time::time_duration diff = actual_time_pcr - last_time_pcr;
-				if (diff.total_milliseconds() > max_interval_value_between_pcr)
-					max_interval_value_between_pcr = diff.total_milliseconds();
+				if (diff.total_milliseconds() > packet.max_interval_value_between_pcr)
+					packet.max_interval_value_between_pcr = diff.total_milliseconds();
 				last_time_pcr = actual_time_pcr;
 			}
 		}
@@ -570,8 +573,8 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 	return (0);
 }
 
-int	flux_start(bool active, std::string ingroup, int inport, std::string inip, std::string outgroup, int outport, std::string outip,
-				int ttl = 0)
+int	flux_start(bool *active, std::string ingroup, int inport, std::string inip, std::string outgroup, int outport,
+				std::string outip, int ttl, std::string dest_info_file, int interval)
 {
 	struct 					in_addr localInterface;
     struct 					sockaddr_in groupSock;
@@ -583,12 +586,15 @@ int	flux_start(bool active, std::string ingroup, int inport, std::string inip, s
     int 					sd_in;
     int 					datalen_in;
     char 					databuf_in[16384];
-	
+
 	struct sockaddr_storage my_addr;
     struct addrinfo 		*res0 = 0;
     int 					addr_len;
 	
+	Pid_list	pid;	
+	Packet_info	packet;
 	
+	std::cout << "flux start" << std::endl;
 	res0 = udp_resolve_host( 0, outport, SOCK_DGRAM, AF_INET, AI_PASSIVE );
      if( res0 == 0 ) {
 		 std::cerr << "udp_resolve_host failed" << std::endl;
@@ -736,9 +742,11 @@ int	flux_start(bool active, std::string ingroup, int inport, std::string inip, s
     /* Read from the socket. */
     datalen_in = sizeof(databuf_in);
 	
-	if (active == true)
-		std::thread t(print, inip, inport);
-	
+	/*if (active == true)
+	{*/
+		std::thread t(print, inip, inport, dest_info_file, interval, std::ref(pid), std::ref(packet), active);
+		t.detach();
+	//}
 	//First time getter
 	boost::posix_time::ptime last_time = boost::posix_time::microsec_clock::local_time();
 	boost::posix_time::ptime last_time_pcr = last_time;
@@ -757,20 +765,20 @@ int	flux_start(bool active, std::string ingroup, int inport, std::string inip, s
 		if (retval) // changement d'état détecter
 		{
 			std::cout << "Changement d'état détecter" << std::endl;
-			exit(0);
+			//exit(0);
 		}
 		else // select time out
 		{
 			std::cout << "Aucun changement d'état détecter depuis 5 sec" << std::endl;
-			exit(0);
+			//exit(0);
 		}*/
       
 		datalen_out = read(sd_in, databuf_in, datalen_in);
 		// Calcule en milliseconds de l'intervale de reception de chaque packets
 		boost::posix_time::ptime actual_time  = boost::posix_time::microsec_clock::local_time();
 		boost::posix_time::time_duration diff = actual_time - last_time;
-		if (diff.total_milliseconds() > max_interval_value_between_packets)
-			max_interval_value_between_packets = diff.total_milliseconds();
+		if (diff.total_milliseconds() > packet.max_interval_value_between_packets)
+			packet.max_interval_value_between_packets = diff.total_milliseconds();
 		last_time = actual_time;
 	  
 		if(datalen_out < 0) 
@@ -784,7 +792,7 @@ int	flux_start(bool active, std::string ingroup, int inport, std::string inip, s
 		//std::cout << " **r: " << databuf_in << "  " <<strlen(databuf_in) << "**";
     //    printf("The message from multicast server in is: \"%s\"\n", databuf_in);
       }
-		if (active == true)
+		if (*active == true)
 			if(sendto(sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
 				std::cerr << "Sending datagram message out error" << std::endl;
 			//printf("Sending datagram message out...OK\n");
@@ -795,33 +803,67 @@ int	flux_start(bool active, std::string ingroup, int inport, std::string inip, s
 			/*int len = strlen(databuf_in);
 			if (len > 3)
 			{*/
-		packet_monitoring(databuf_in, datalen_out, last_time_pcr);
+		packet_monitoring(databuf_in, datalen_out, last_time_pcr, pid, packet);
     }
 	return (0);
 }
 
 int	main(int argc, char **argv)
 {
-	std::string 	ingroup_main;
-	int  			inport_main;
-	std::string 	inip_main;
-	std::string		outgroup_main; 
-    int				outport_main;
-    std::string 	outip_main;
-	int 			ttl_main = 0;
+	std::string 		ingroup_main;
+	int  				inport_main;
+	std::string 		inip_main;
+	std::string			outgroup_main; 
+    int					outport_main;
+    std::string 		outip_main;
+	int 				ttl_main = 0;
+	std::string			dest_info_file_main;	
+	int					interval_main;
 	
-	std::string 	ingroup_second;
-	int  			inport_second;
-	std::string 	inip_second;
-	std::string		outgroup_second; 
-    int				outport_second;
-    std::string 	outip_second;
-	int 			ttl_second = 0;
+	std::string 		ingroup_second;
+	int  				inport_second;
+	std::string 		inip_second;
+	std::string			outgroup_second; 
+    int					outport_second;
+    std::string 		outip_second;
+	int 				ttl_second = 0;
+	std::string			dest_info_file_second;
+	int					interval_second;
+	bool				Main = true;
+	bool				Second = false;
 	
 	if (init(argc, argv, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main,
-						ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second) == 1)
+						ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second,
+						dest_info_file_main, dest_info_file_second, interval_main, interval_second) == 1)
 		return (1);
-	std::thread primary(flux_start,true, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main);
-	std::thread secondary(flux_start,false, ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second);
+	std::thread primary(flux_start, &Main, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main, dest_info_file_main, interval_main);
+	std::thread secondary(flux_start, &Second, ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second, dest_info_file_second, interval_second);
+	
+	
+	fd_set	fd_input;
+	struct timeval	tv;
+	int retval;
+	
+	FD_ZERO(&fd_input);
+	FD_SET(0, &fd_input);
+	tv.tv_sec = 5;
+	tv.tv_usec = 0;
+	
+	retval = select(0 + 1, &fd_input, NULL, NULL, &tv);
+	if (retval) // changement d'état détecter
+	{
+		std::cout << "Changement d'état détecter" << std::endl;
+		//exit(0);
+	}
+	else // select time out
+	{
+		std::cout << "Aucun changement d'état détecter depuis 5 sec" << std::endl;
+		bool temporaire = Main;
+		Main = Second;
+		Second = temporaire;
+		//exit(0);
+	}
+	primary.join();
+	secondary.join();
 	return (0);
 }
