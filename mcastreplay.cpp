@@ -20,6 +20,7 @@
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/filesystem.hpp>
 
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
 #define SLEEP_DURATION 60
@@ -65,7 +66,6 @@ void	print()
 	std::ofstream				fd_debit;
 	static unsigned long long int	saved_value;
 	unsigned long int			debit;
-	
 	sleep(SLEEP_DURATION);
 	debit = ((octets_read - saved_value) * 8) / 60; // get debit = bite per second
 	std::cout << "packets_read: " << packets_read << std::endl;
@@ -168,6 +168,18 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 		std::cerr << description << std::endl << file_description << std::endl;
 		return (1);
 	}
+
+        if ( dest_info_file != "" ) {
+	   try {
+	      if (!boost::filesystem::is_directory(dest_info_file)) {
+	         boost::filesystem::create_directories(dest_info_file);
+	      }
+	   } catch (const boost::filesystem::filesystem_error& e) {
+	         std::cerr << "Failed to check or create directory:" << dest_info_file << " with error:" << e.what() << std::endl;
+	         return(1) ;
+	   }
+	} 
+
 	return (0);
 }
 
