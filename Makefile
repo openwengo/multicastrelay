@@ -5,20 +5,34 @@ CC = g++
 RM	= rm -f
 
 SRC = mcastreplay.cpp\
-	  pid.cpp
+		pid.cpp
 
-CPPFLAGS = -I ../boost_1_61_0/ -std=gnu++11 -pthread
+OBJS = mcastreplay.o\
+		pid.o
 
-LDLIBS = ../boost_1_61_0/bin.v2/libs/program_options/build/gcc-4.8.3/release/link-static/threading-multi/libboost_program_options.a\
-		 ../boost_1_61_0/bin.v2/libs/system/build/gcc-4.8.3/release/link-static/threading-multi/libboost_system.a\
+#BOOST_INC=-I../boost_1_61_0/
+BOOST_INC=
+
+CPPFLAGS = $(BOOST_INC) -std=gnu++11 -pthread
+
+#LDLIBS = $(BOOST_PATH)/bin.v2/libs/program_options/build/gcc-4.8.3/release/link-static/threading-multi/libboost_program_options.a\
+#	 $(BOOST_PATH)/bin.v2/libs/system/build/gcc-4.8.3/release/link-static/threading-multi/libboost_system.a\
+#
+LDLIBS =  -lboost_program_options -lboost_system -lboost_filesystem
+
+
+
 
 all: $(NAME)
 
-$(NAME):
-		$(CC) $(SRC) -o $(NAME) $(CPPFLAGS) $(LDLIBS)
+%.o: %.cpp
+	$(CXX) -o $@ -c $< $(CPPFLAGS)
+
+$(NAME): $(OBJS)
+		$(CXX) $(CPPFLAGS) -o $(NAME) $(OBJS) $(LDLIBS)
 
 clean: 
-		$(RM) $(NAME)
+		$(RM) $(NAME) $(OBJS)
 
 re: clean all
 
