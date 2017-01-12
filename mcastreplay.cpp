@@ -21,6 +21,7 @@
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/filesystem.hpp>
 
 #include "pid.hpp"
 
@@ -246,6 +247,17 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 		std::cerr << description << std::endl << file_description << std::endl;
 		return (1);
 	}
+	if ( dest_info_file != "" )
+	{
+ 	   try {
+ 	      if (!boost::filesystem::is_directory(dest_info_file)) {
+ 	         boost::filesystem::create_directories(dest_info_file);
+ 	      }
+ 	   } catch (const boost::filesystem::filesystem_error& e) {
+ 	         std::cerr << "Failed to check or create directory:" << dest_info_file << " with error:" << e.what() << std::endl;
+ 	         return(1) ;
+ 	   }
+ 	} 
 	return (0);
 }
 
