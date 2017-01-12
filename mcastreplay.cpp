@@ -16,6 +16,7 @@
 #include <vector>
 #include <algorithm>
 #include <thread>
+#include <atomic>
 
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
@@ -25,11 +26,11 @@
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
 #define SLEEP_DURATION 60
 
-std::list<short> 			pid_list;
-std::vector<int>			pkts_per_pids;
-unsigned long long int		packets_read = 0;
-unsigned long long int		octets_read = 0;
-std::string					dest_info_file;
+std::list<short> 						pid_list;
+std::vector<int>						pkts_per_pids;
+std::atomic<unsigned long long int>		packets_read(0);
+std::atomic<unsigned long long int>		octets_read(0);
+std::atomic<char*>						atomic_dest_info_file;
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
@@ -67,24 +68,26 @@ void	print()
 	static unsigned long long int	saved_value;
 	unsigned long int			debit;
 	sleep(SLEEP_DURATION);
-	debit = ((octets_read - saved_value) * 8) / 60; // get debit = bite per second
-	std::cout << "packets_read: " << packets_read << std::endl;
-	std::cout << "octets_read: " << octets_read << std::endl;
+	debit = ((octets_read.load() - saved_value) * 8) / SLEEP_DURATION; // get debit = bite per second
+	std::cout << "packets_read: " << packets_read.load() << std::endl;
+	std::cout << "octets_read: " << octets_read.load() << std::endl;
 	std::cout << "debit: " << debit << std::endl;
 	try
 	{
-		fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
+		std::string tmp_dest = atomic_dest_info_file.load();
+		
+		fd_packets.open(tmp_dest + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
+		fd_octets.open(tmp_dest + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
+		fd_debit.open(tmp_dest + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
 		if (fd_packets.fail())
-			std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
+			std::cerr << "Opening " << tmp_dest << "Packets.txt failed" << std::endl;
 		if (fd_octets.fail())
-			std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
+			std::cerr << "Opening " << tmp_dest << "Octets.txt failed" << std::endl;
 		if (fd_debit.fail())
-			std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
-		fd_packets << packets_read << std::endl;
+			std::cerr << "Opening " << tmp_dest << "Debit.txt failed" << std::endl;
+		fd_packets << packets_read.load() << std::endl;
 		fd_packets.flush();
-		fd_octets << octets_read << std::endl;
+		fd_octets << octets_read.load() << std::endl;
 		fd_octets.flush();
 		fd_debit << debit << std::endl;
 		fd_debit.flush();
@@ -96,7 +99,7 @@ void	print()
 	fd_packets.close();
 	fd_octets.close();
 	fd_debit.close();
-	saved_value = octets_read;
+	saved_value = octets_read.load();
 	print();
 }
 
@@ -106,6 +109,7 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 	boost::program_options::options_description file_description("File Options");
 	boost::program_options::variables_map file_boost_map;
 	std::string config_file = DEFAULT_FILE_CONFIG;
+	std::string 			temp_dest_info_file;
 	
 	file_description.add_options()
 	("In.Group", boost::program_options::value<std::string>(&s_ingroup)->default_value(""), "Group In")
@@ -115,7 +119,7 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 	("Out.Ip", boost::program_options::value<std::string>(&s_outip)->default_value(""), "Ip Out")
 	("Out.Port", boost::program_options::value<int>(&s_outport)->default_value(0), "Port Out")
 	("Out.Ttl", boost::program_options::value<int>(&ttl)->default_value(0), "Ttl Out")
-	("Out.StatsPath", boost::program_options::value<std::string>(&dest_info_file)->default_value(""), "Stats Path");
+	("Out.StatsPath", boost::program_options::value<std::string>(&temp_dest_info_file)->default_value(""), "Stats Path");
 	
 	// Option from Command Line recuperation
 	boost::program_options::options_description description("Command Line Options");
@@ -128,7 +132,7 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 	("outgroup", boost::program_options::value<std::string>(&s_outgroup), "Group Out")
 	("outip", boost::program_options::value<std::string>(&s_outip), "Ip Out")
 	("outport", boost::program_options::value<int>(&s_outport), "Port Out")
-	("statspath", boost::program_options::value<std::string>(&dest_info_file), "Stats Path")
+	("statspath", boost::program_options::value<std::string>(&temp_dest_info_file), "Stats Path")
 	("config", boost::program_options::value<std::string>(&config_file), "Config File Name")
 	("ttl", boost::program_options::value<int>(&ttl), "Ttl Out")
 	("help", "Help Screen");
@@ -169,17 +173,17 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 		return (1);
 	}
 
-        if ( dest_info_file != "" ) {
+        if (temp_dest_info_file != "" ) {
 	   try {
-	      if (!boost::filesystem::is_directory(dest_info_file)) {
-	         boost::filesystem::create_directories(dest_info_file);
+	      if (!boost::filesystem::is_directory(temp_dest_info_file)) {
+	         boost::filesystem::create_directories(temp_dest_info_file);
 	      }
 	   } catch (const boost::filesystem::filesystem_error& e) {
-	         std::cerr << "Failed to check or create directory:" << dest_info_file << " with error:" << e.what() << std::endl;
+	         std::cerr << "Failed to check or create directory:" << temp_dest_info_file << " with error:" << e.what() << std::endl;
 	         return(1) ;
 	   }
-	} 
-
+	}
+	atomic_dest_info_file.store((char*)temp_dest_info_file.c_str(), std::memory_order_relaxed);
 	return (0);
 }
 
@@ -227,7 +231,6 @@ int	main(int argc, char **argv)
 	
 	if (init(argc, argv, s_ingroup, s_inport, s_inip, s_outgroup, s_outport, s_outip, ttl) == 1)
 		return (1);
-	
 	res0 = udp_resolve_host( 0, s_outport, SOCK_DGRAM, AF_INET, AI_PASSIVE );
      if( res0 == 0 ) {
 		 std::cerr << "udp_resolve_host failed" << std::endl;
@@ -406,8 +409,8 @@ int	main(int argc, char **argv)
 		if (packets_size != -1)
 		{
 			int packets_per_read = datalen_out / packets_size;
-			packets_read = packets_read + packets_per_read;
-			octets_read = octets_read + datalen_out;
+			packets_read.fetch_add(packets_per_read, std::memory_order_relaxed); //packets_read = packets_read + packets_per_read;
+			octets_read.fetch_add(datalen_out, std::memory_order_relaxed); //octets_read = octets_read + datalen_out;
 		}
       }
     }
