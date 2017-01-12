@@ -7,8 +7,7 @@ RM	= rm -f
 SRC = mcastreplay.cpp\
 		pid.cpp
 
-OBJS = mcastreplay.o\
-		pid.o
+OBJS = $(SRC:.cpp=.o)
 
 #BOOST_INC=-I../boost_1_61_0/
 BOOST_INC=
