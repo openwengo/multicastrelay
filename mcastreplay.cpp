@@ -21,6 +21,7 @@
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/filesystem.hpp>
 
 #include "packets_general_info.hpp"
 #include "pid.hpp"
