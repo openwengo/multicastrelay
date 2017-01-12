@@ -21,7 +21,6 @@
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/filesystem.hpp>
 
 #include "packets_general_info.hpp"
 #include "pid.hpp"
@@ -259,26 +258,27 @@ int	init (int argc, char **argv, std::string &ingroup_main, int &inport_main, st
 		std::cerr << description << std::endl << file_description << std::endl;
 		return (1);
 	}
-	if (dest_info_file_main != "" ) {
- 	   try {
- 	      if (!boost::filesystem::is_directory(dest_info_file_main)) {
- 	         boost::filesystem::create_directories(dest_info_file_main);
- 	      }
- 	   } catch (const boost::filesystem::filesystem_error& e) {
- 	         std::cerr << "Failed to check or create directory:" << dest_info_file_main << " with error:" << e.what() << std::endl;
- 	         return(1) ;
-     }
- 	}
-	if (dest_info_file_second != "" ) {
- 	   try {
- 	      if (!boost::filesystem::is_directory(dest_info_file_second)) {
- 	         boost::filesystem::create_directories(dest_info_file_second);
- 	      }
- 	   } catch (const boost::filesystem::filesystem_error& e) {
- 	         std::cerr << "Failed to check or create directory:" << dest_info_file_second << " with error:" << e.what() << std::endl;
- 	         return(1) ;
-     }
- 	}
+	if ( dest_info_file_main != "" ) {
+	   try {
+	      if (!boost::filesystem::is_directory(dest_info_file_main)) {
+	         boost::filesystem::create_directories(dest_info_file_main);
+	      }
+	   } catch (const boost::filesystem::filesystem_error& e) {
+	         std::cerr << "Failed to check or create directory:" << dest_info_file_main << " with error:" << e.what() << std::endl;
+	         return(1) ;
+	   }
+	}
+	if ( dest_info_file_second != "" ) {
+	   try {
+	      if (!boost::filesystem::is_directory(dest_info_file_second)) {
+	         boost::filesystem::create_directories(dest_info_file_second);
+	      }
+	   } catch (const boost::filesystem::filesystem_error& e) {
+	         std::cerr << "Failed to check or create directory:" << dest_info_file_second << " with error:" << e.what() << std::endl;
+	         return(1) ;
+	   }
+	} 
+
 	return (0);
 }
 
