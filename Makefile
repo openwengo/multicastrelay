@@ -13,7 +13,7 @@ OBJS = mcastreplay.o\
 #BOOST_INC=-I../boost_1_61_0/
 BOOST_INC=
 
-CPPFLAGS = $(BOOST_INC) -std=gnu++11 -pthread
+CPPFLAGS = $(BOOST_INC) -std=c++11 -pthread
 
 #LDLIBS = $(BOOST_PATH)/bin.v2/libs/program_options/build/gcc-4.8.3/release/link-static/threading-multi/libboost_program_options.a\
 #	 $(BOOST_PATH)/bin.v2/libs/system/build/gcc-4.8.3/release/link-static/threading-multi/libboost_system.a\

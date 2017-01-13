@@ -28,22 +28,52 @@
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
 #define DEFAULT_SLEEP_DURATION 60
 
-std::list<short> 					pid_list;
-unsigned long long int				packets_read = 0;
-unsigned long long int				octets_read = 0;
+//std::list<short> 					pid_list;
+std::atomic<unsigned long long int>	packets_read(0);
+std::atomic<unsigned long long int>	octets_read(0);
 std::string							dest_info_file;
-unsigned long long int				max_interval_value_between_packets = 0;
-unsigned long long int				max_interval_value_between_pcr = 0;
-static int							interval;
+std::atomic<unsigned long long int> max_interval_value_between_packets(0);
+std::atomic<unsigned long long int>	max_interval_value_between_pcr(0);
 
-int counter001 = 0;
-int counter000 = 0;
+std::atomic<int> counter001(0);
+std::atomic<int> counter000(0);
 
 static std::string 		s_ingroup;
 static int  			s_inport;
 static std::string 		s_inip;
 
-Pid_list	pid;
+/*Pid_list*/std::list<Pid>	pid_list;
+
+void	print_list(std::list<Pid> &pid_list)
+{
+	std::list<Pid>::iterator	it = pid_list.begin();
+	
+	std::cout << "******************************" << std::endl;
+	std::cout << "PIDS list:" << std::endl;
+	while (it != pid_list.end())
+	{
+		std::cout << std::endl << "pid " << (*it).pid << " = " << std::endl;
+		std::cout << "type " << (*it).type << std::endl;
+		std::cout << "description " << (*it).description << std::endl;
+		std::cout << "pkts_per_pids " << (*it).pkts_per_pids << std::endl;
+		std::cout << "continuity_error_per_pid " << (*it).continuity_error_per_pid << std::endl;
+		std::cout << "last_continuity_counter_per_pid " << (*it).last_continuity_counter_per_pid << std::endl;
+		std::cout << "packet_per_pid_saved_value " << (*it).packet_per_pid_saved_value << std::endl;
+		std::cout << "contain_pcr " << (*it).contain_pcr << std::endl;
+		std::cout << "pes_stream_id " << (*it).pes_stream_id << std::endl;
+		it++;
+	}
+	std::cout << "******************************" << std::endl << std::endl;
+}
+
+std::list<Pid>::iterator	find_pid(short pid_val, std::list<Pid> &pid_list)
+{
+	std::list<Pid>::iterator	it = pid_list.begin();
+	
+	while (it != pid_list.end() && (*it).pid != pid_val)
+		it++;
+	return (it);
+}
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
@@ -73,7 +103,7 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
     return res;
 }
 
-void	print()
+void	print(int interval)
 {
 	std::ofstream									fd_packets;
 	std::ofstream									fd_octets;
@@ -88,7 +118,7 @@ void	print()
 	std::cout << "print start" << std::endl;
 	sleep(interval);
 
-	for (pid_it = pid.pid_list.begin(); pid_it != pid.pid_list.end(); pid_it++)
+	for (pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
 	{
 		// Ecriture des fichiers "pkts_in_ip_port du flux entrant_pidN" Pour tout N
 		try
@@ -99,7 +129,7 @@ void	print()
 			std::cout << "double cacule" << std::endl;
 			double packets_per_second = ((*pid_it).pkts_per_pids - (*pid_it).packet_per_pid_saved_value) / (double)interval;
 			std::cout << "end calcule" << std::endl;
-			(*pid_it).packet_per_pid_saved_value = (*pid_it).pkts_per_pids;
+			(*pid_it).packet_per_pid_saved_value.store((*pid_it).pkts_per_pids, std::memory_order_relaxed);
 			fd << packets_per_second << std::endl;
 			fd.flush();
 		}
@@ -174,10 +204,10 @@ void	print()
 	
 	std::cout << "counter000 " << counter000 << "\ncounter001 " << counter001 << std::endl;
 	std::cout << "end start" << std::endl;
-	print();
+	print(interval);
 }
 
-int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl)
+int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl, int &interval)
 {
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
@@ -317,6 +347,7 @@ int	PES_analysis(int &packets_size, int &x, char databuf_in[16384], short PID, s
 		++s_audio_packet_nbr;
 		return (1);
 	}
+	return (0);
 	/*int i = x * packets_size;
 	std::cout << "PID: " << PID << std::endl;
 	while (i != (x * packets_size) + packets_size)
@@ -365,11 +396,11 @@ void	PMT_analysis(char databuf_in[16384], int &x, int &packets_size, short &sect
 		<< es_info_length_length << " boucle_length: " << boucle_length << std::endl;
 		*/
 		bool pcr = false;
-		if ((pid_it = pid.find_pid(elementary_pid)) == pid.pid_list.end())
+		if ((pid_it = find_pid(elementary_pid, pid_list)) == pid_list.end())
 		{
 			if (pcr_pid == elementary_pid)
 				pcr = true;
-			pid.pid_list.push_back(Pid(elementary_pid, "PES", "", 0, 0, 99,0, pcr, 0));
+			pid_list.emplace_back(elementary_pid, "PES", "", 0, 0, 99,0, pcr, 0);
 			//pid.print_list();
 		}
 		else
@@ -412,17 +443,17 @@ void	PAT_analysis(char databuf_in[16384], int &x, int &packets_size, short &sect
 	// Program num
 	/* 16bit value = (((databuf_in[(x * packets_size) + 13] & 0xff) << 8) | (databuf_in[(x * packets_size) + 14] & 0xff));
 	*/
-	if (pid_it == pid.pid_list.end())
-		pid.pid_list.push_back(Pid(0, "PSI", "PAT", 0, 0, 99,0, false, 0));
+	if (pid_it == pid_list.end())
+		pid_list.emplace_back(0, "PSI", "PAT", 0, 0, 99,0, false, 0);
 	// PMT PID / Program Map PID, begin at byte 15-16
 	while (15 + (repetition * pat_repetition_size) < section_length + 6) // 6 = byte number of section length begining 
 	{
 		short program_map_pid = ((databuf_in[(x * packets_size) + 15 + (repetition * pat_repetition_size)] & 0x1f) << 8) | 
 			(databuf_in[(x * packets_size) + 16] & 0xff);
 		
-		if ((pid_it = pid.find_pid(program_map_pid)) == pid.pid_list.end())
+		if ((pid_it = find_pid(program_map_pid, pid_list)) == pid_list.end())
 		{
-			pid.pid_list.push_back(Pid(program_map_pid, "PSI", "PMT", 0, 0, 99,0, false, 0));
+			pid_list.emplace_back(program_map_pid, "PSI", "PMT", 0, 0, 99,0, false, 0);
 			//pid.print_list();
 		}
 		else
@@ -461,10 +492,10 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 			if ((section_length= ((databuf_in[(x * packets_size) + 6] & 0x7) << 8) | (databuf_in[(x * packets_size) + 7] & 0xff)) > 1021)
 				section_length = 0;
 			
-			pid_it = pid.find_pid(PID);
+			pid_it = find_pid(PID, pid_list);
 			// null packet
-			if (PID == 8191 && pid_it == pid.pid_list.end())
-				pid.pid_list.push_back(Pid(PID, "NUL", "Nul packet", 0, 0, 99,0, false, 0));
+			if (PID == 8191 && pid_it == pid_list.end())
+				pid_list.emplace_back(PID, "NUL", "Nul packet", 0, 0, 99,0, false, 0);
 			// DVB
 			else if (PID >= 16 && PID <= 31)
 				{
@@ -472,8 +503,8 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 					//check table id
 					if (databuf_in[(x * packets_size) + 5] == 66 || databuf_in[(x * packets_size) + 5] == 70)
 						description = "SDT";
-					if (pid_it == pid.pid_list.end())
-						pid.pid_list.push_back(Pid(PID, type, description, 0, 0, 99,0, false, 0));
+					if (pid_it == pid_list.end())
+						pid_list.emplace_back(PID, type, description, 0, 0, 99,0, false, 0);
 					else
 					{
 						(*pid_it).type = type;
@@ -592,14 +623,14 @@ int	main(int argc, char **argv)
 	static std::string		s_outgroup; 
     static int				s_outport;
     static std::string 		s_outip;
-	
+	int 					interval;
 	struct sockaddr_storage my_addr;
     struct addrinfo 		*res0 = 0;
     int 					addr_len;
 	
 	int ttl = 0;
 	
-	if (init(argc, argv, s_ingroup, s_inport, s_inip, s_outgroup, s_outport, s_outip, ttl) == 1)
+	if (init(argc, argv, s_ingroup, s_inport, s_inip, s_outgroup, s_outport, s_outip, ttl, interval) == 1)
 		return (1);
 	
 	res0 = udp_resolve_host( 0, s_outport, SOCK_DGRAM, AF_INET, AI_PASSIVE );
@@ -749,7 +780,7 @@ int	main(int argc, char **argv)
     /* Read from the socket. */
     datalen_in = sizeof(databuf_in);
 	
-	std::thread t(print);
+	std::thread t(print, interval);
 	
 	//First time getter
 	boost::posix_time::ptime last_time = boost::posix_time::microsec_clock::local_time();
