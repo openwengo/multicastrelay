@@ -66,38 +66,36 @@ void	print()
 	std::ofstream				fd_debit;
 	static unsigned long long int	saved_value;
 	unsigned long int			debit;
-	sleep(SLEEP_DURATION);
-	debit = ((octets_read - saved_value) * 8) / 60; // get debit = bite per second
-	std::cout << "packets_read: " << packets_read << std::endl;
-	std::cout << "octets_read: " << octets_read << std::endl;
-	std::cout << "debit: " << debit << std::endl;
-	try
-	{
-		fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
-		if (fd_packets.fail())
-			std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
-		if (fd_octets.fail())
-			std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
-		if (fd_debit.fail())
-			std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
-		fd_packets << packets_read << std::endl;
-		fd_packets.flush();
-		fd_octets << octets_read << std::endl;
-		fd_octets.flush();
-		fd_debit << debit << std::endl;
-		fd_debit.flush();
+	while(1) {
+		sleep(SLEEP_DURATION);
+		debit = ((octets_read - saved_value) * 8) / 60; // get debit = bite per second
+		std::cout << "packets_read: " << packets_read << std::endl;
+		std::cout << "octets_read: " << octets_read << std::endl;
+		std::cout << "debit: " << debit << std::endl;
+		try {
+			fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
+			if (fd_packets.fail())
+				std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
+			if (fd_octets.fail())
+				std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
+			if (fd_debit.fail())
+				std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
+			fd_packets << packets_read << std::endl;
+			fd_packets.flush();
+			fd_octets << octets_read << std::endl;
+			fd_octets.flush();
+			fd_debit << debit << std::endl;
+			fd_debit.flush();
+		} catch (const boost::program_options::error &e) {
+			std::cerr << "Exception: " << e.what() << std::endl;
+		}
+		fd_packets.close();
+		fd_octets.close();
+		fd_debit.close();
+		saved_value = octets_read;
 	}
-	catch (const boost::program_options::error &e)
-	{
-		std::cerr << "Exception: " << e.what() << std::endl;
-	}
-	fd_packets.close();
-	fd_octets.close();
-	fd_debit.close();
-	saved_value = octets_read;
-	print();
 }
 
 int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl)
