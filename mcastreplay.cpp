@@ -115,99 +115,96 @@ void	print(int interval)
 	unsigned long int								debit;
 	std::list<Pid>::iterator						pid_it;
 	
-	std::cout << "print start" << std::endl;
-	sleep(interval);
+	while(1)
+	{
+		sleep(interval);
 
-	for (pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
-	{
-		// Ecriture des fichiers "pkts_in_ip_port du flux entrant_pidN" Pour tout N
-		try
+		for (pid_it = pid_list.begin(); pid_it != pid_list.end(); pid_it++)
 		{
-			fd.open(dest_info_file + "pkts_in_" + s_inip + "_" + std::to_string(s_inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
-			if (fd.fail())
-				std::cerr << "Opening " << dest_info_file << "pkts_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
-			std::cout << "double cacule" << std::endl;
-			double packets_per_second = ((*pid_it).pkts_per_pids - (*pid_it).packet_per_pid_saved_value) / (double)interval;
-			std::cout << "end calcule" << std::endl;
-			(*pid_it).packet_per_pid_saved_value.store((*pid_it).pkts_per_pids, std::memory_order_relaxed);
-			fd << packets_per_second << std::endl;
-			fd.flush();
-		}
-		catch(std::exception &e)
-		{
-			std::cerr << "Exception: " << e.what() << std::endl;
-		}
-		fd.close();
+			// Ecriture des fichiers "pkts_in_ip_port du flux entrant_pidN" Pour tout N
+			try
+			{
+				fd.open(dest_info_file + "pkts_in_" + s_inip + "_" + std::to_string(s_inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
+				if (fd.fail())
+					std::cerr << "Opening " << dest_info_file << "pkts_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
+				double packets_per_second = ((*pid_it).pkts_per_pids - (*pid_it).packet_per_pid_saved_value) / (double)interval;
+				(*pid_it).packet_per_pid_saved_value.store((*pid_it).pkts_per_pids, std::memory_order_relaxed);
+				fd << packets_per_second << std::endl;
+				fd.flush();
+			}
+			catch(std::exception &e)
+			{
+				std::cerr << "Exception: " << e.what() << std::endl;
+			}
+			fd.close();
 		
-		// Ecriture des fichiers "continuity_error_in_ip_port du flux entrant_pidN" Pour tout N
+			// Ecriture des fichiers "continuity_error_in_ip_port du flux entrant_pidN" Pour tout N
+			try
+			{
+				fd.open(dest_info_file + "continuity_error_in_" + s_inip + "_" + std::to_string(s_inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
+				if (fd.fail())
+					std::cerr << "Opening " << dest_info_file << "continuity_error_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
+				std::cout << "PID: " << (*pid_it).pid << " = " << (*pid_it).continuity_error_per_pid << " continuity errors" << std::endl;
+				fd << (*pid_it).continuity_error_per_pid << std::endl;
+				fd.flush();
+			}
+			catch(std::exception &e)
+			{
+				std::cerr << "Exception: " << e.what() << std::endl;
+			}
+			fd.close();
+		}
+		// Ecriture des Fichiers Octects.txt Packets.txt Debit.txt
+		debit = ((octets_read - saved_value) * 8) / interval; // get debit = bite per second
+		std::cout << "packets_read: " << packets_read << std::endl;
+		std::cout << "octets_read: " << octets_read << std::endl;
+		std::cout << "debit: " << debit << std::endl;
+		std::cout << "interval max between two packets: " << max_interval_value_between_packets << " milliseconds" << std::endl;
+		std::cout << "interval max between two packets with pcr: " << max_interval_value_between_pcr << " milliseconds" << std::endl;
 		try
 		{
-			fd.open(dest_info_file + "continuity_error_in_" + s_inip + "_" + std::to_string(s_inport) + "_" + std::to_string((*pid_it).pid) + ".txt", std::ofstream::out | std::ofstream::trunc);
-			if (fd.fail())
-				std::cerr << "Opening " << dest_info_file << "continuity_error_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string((*pid_it).pid) << ".txt" << " failed" << std::endl;
-			std::cout << "PID: " << (*pid_it).pid << " = " << (*pid_it).continuity_error_per_pid << " continuity errors" << std::endl;
-			fd << (*pid_it).continuity_error_per_pid << std::endl;
-			fd.flush();
+			fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_interval.open(dest_info_file + "Millisecond_intervale_max_between_packets.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_interval_pcr.open(dest_info_file + "Millisecond_intervale_max_between_packets_pcr.txt", std::ofstream::out | std::ofstream::trunc);
+			if (fd_packets.fail())
+				std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
+			if (fd_octets.fail())
+				std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
+			if (fd_debit.fail())
+				std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
+			if (fd_interval.fail())
+				std::cerr << "Opening " << dest_info_file << "Millisecond_intervale_max_between_packets.txt failed" << std::endl;
+			if (fd_interval_pcr.fail())
+				std::cerr << "Opening " << dest_info_file << "Millisecond_intervale_max_between_packets_pcr.txt failed" << std::endl;
+			fd_packets << packets_read << std::endl;
+			fd_packets.flush();
+			fd_octets << octets_read << std::endl;
+			fd_octets.flush();
+			fd_debit << debit << std::endl;
+			fd_debit.flush();
+			fd_interval << max_interval_value_between_packets << std::endl;
+			fd_interval.flush();
+			fd_interval_pcr << max_interval_value_between_pcr << std::endl;
+			fd_interval_pcr.flush();
 		}
 		catch(std::exception &e)
 		{
 			std::cerr << "Exception: " << e.what() << std::endl;
 		}
-		fd.close();
+		fd_packets.close();
+		fd_octets.close();
+		fd_debit.close();
+		fd_interval.close();
+		fd_interval_pcr.close();
+		saved_value = octets_read;
+		
+		std::cout << "counter000 " << counter000 << "\ncounter001 " << counter001 << std::endl;
 	}
-	std::cout << "midle start" << std::endl;
-	// Ecriture des Fichiers Octects.txt Packets.txt Debit.txt
-	debit = ((octets_read - saved_value) * 8) / interval; // get debit = bite per second
-	std::cout << "packets_read: " << packets_read << std::endl;
-	std::cout << "octets_read: " << octets_read << std::endl;
-	std::cout << "debit: " << debit << std::endl;
-	std::cout << "interval max between two packets: " << max_interval_value_between_packets << " milliseconds" << std::endl;
-	std::cout << "interval max between two packets with pcr: " << max_interval_value_between_pcr << " milliseconds" << std::endl;
-	try
-	{
-		fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_interval.open(dest_info_file + "Millisecond_intervale_max_between_packets.txt", std::ofstream::out | std::ofstream::trunc);
-		fd_interval_pcr.open(dest_info_file + "Millisecond_intervale_max_between_packets_pcr.txt", std::ofstream::out | std::ofstream::trunc);
-		if (fd_packets.fail())
-			std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
-		if (fd_octets.fail())
-			std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
-		if (fd_debit.fail())
-			std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
-		if (fd_interval.fail())
-			std::cerr << "Opening " << dest_info_file << "Millisecond_intervale_max_between_packets.txt failed" << std::endl;
-		if (fd_interval_pcr.fail())
-			std::cerr << "Opening " << dest_info_file << "Millisecond_intervale_max_between_packets_pcr.txt failed" << std::endl;
-		fd_packets << packets_read << std::endl;
-		fd_packets.flush();
-		fd_octets << octets_read << std::endl;
-		fd_octets.flush();
-		fd_debit << debit << std::endl;
-		fd_debit.flush();
-		fd_interval << max_interval_value_between_packets << std::endl;
-		fd_interval.flush();
-		fd_interval_pcr << max_interval_value_between_pcr << std::endl;
-		fd_interval_pcr.flush();
-	}
-	catch(std::exception &e)
-	{
-		std::cerr << "Exception: " << e.what() << std::endl;
-	}
-	fd_packets.close();
-	fd_octets.close();
-	fd_debit.close();
-	fd_interval.close();
-	fd_interval_pcr.close();
-	saved_value = octets_read;
-	
-	std::cout << "counter000 " << counter000 << "\ncounter001 " << counter001 << std::endl;
-	std::cout << "end start" << std::endl;
-	print(interval);
 }
 
-int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl, int &interval)
+int	init (int &argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl, int &interval)
 {
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
@@ -291,23 +288,23 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 	return (0);
 }
 
-int	packet_size_guessing(char databuf_in[16384], int size_read)
+int	packet_size_guessing(const char (*databuf_in)[16384])
 {
 	int size_testing[1] = {188};
 	
 	for(int x = 0; x != 1; x++)
 	{
 		int index = 0;
-		if (databuf_in[size_testing[x] * index++] == 'G' && 
-			databuf_in[size_testing[x] * index++] == 'G' &&
-			databuf_in[size_testing[x] * index++] == 'G')
+		if ((*databuf_in)[size_testing[x] * index++] == 'G' && 
+			(*databuf_in)[size_testing[x] * index++] == 'G' &&
+			(*databuf_in)[size_testing[x] * index++] == 'G')
 			return (size_testing[x]);
 	}
 	return (-1);
 }
 
 // 00000000 00000000 00000001 (1110**** for video or 110***** for audio) = PES start code
-int	PES_analysis(int &packets_size, int &x, char databuf_in[16384], short PID, std::list<Pid>::iterator pid_it)
+int	PES_analysis(int &packets_size, int &x, const char (*databuf_in)[16384], short PID, std::list<Pid>::iterator pid_it)
 {
 	
 	// IN test, arrange this function when finished
@@ -319,16 +316,16 @@ int	PES_analysis(int &packets_size, int &x, char databuf_in[16384], short PID, s
 	for (pos = 0; pos != packets_size; pos++)
 		{
 			if ((((x * packets_size) + pos + 1) <= ((x + 1) * packets_size)) && (((x * packets_size) + pos + 2) <= ((x + 1) * packets_size)))
-				if (databuf_in[(x * packets_size) + pos] == 0 && databuf_in[(x * packets_size) + pos + 1] == 0 && databuf_in[(x * packets_size) + pos + 2] == 1)
+				if ((*databuf_in)[(x * packets_size) + pos] == 0 && (*databuf_in)[(x * packets_size) + pos + 1] == 0 && (*databuf_in)[(x * packets_size) + pos + 2] == 1)
 				{
 					//std::cout << "PID: " << PID << " stream id " << std::bitset<8>(databuf_in[(x * packets_size) + pos + 3]) << std::endl;
-					short pes_length = ((databuf_in[(x * packets_size) + pos + 4] << 8) | databuf_in[(x * packets_size) + pos + 5]);
+					short pes_length = (((*databuf_in)[(x * packets_size) + pos + 4] << 8) | (*databuf_in)[(x * packets_size) + pos + 5]);
 					//std::cout << "PES packet length " << pes_length << std::endl;
-					short header_pes_len = databuf_in[(x * packets_size) + pos + 8];
+					short header_pes_len = (*databuf_in)[(x * packets_size) + pos + 8];
 					//std::cout << "PES header length " << header_pes_len << std::endl;
 					s_video_packet_nbr = 0;
 					s_audio_packet_nbr = 0;
-					std::string stream_id = std::bitset<8>(databuf_in[(x * packets_size) + pos + 3]).to_string<char,std::string::traits_type,std::string::allocator_type>();
+					std::string stream_id = std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]).to_string<char,std::string::traits_type,std::string::allocator_type>();
 					if (stream_id >= "11000000" && stream_id <= "11011111")
 						(*pid_it).description = "Audio";
 					else if (stream_id >= "11100000" && stream_id <= "11101111")
@@ -358,10 +355,10 @@ int	PES_analysis(int &packets_size, int &x, char databuf_in[16384], short PID, s
 	std::cout << std::endl;*/
 }
 
-void	PMT_analysis(char databuf_in[16384], int &x, int &packets_size, short &section_length, std::list<Pid>::iterator pid_it)
+void	PMT_analysis(const char (*databuf_in)[16384], int &x, int &packets_size, short &section_length, std::list<Pid>::iterator pid_it)
 {
 	//octet 13 14 pcr pid
-	short pcr_pid = ((databuf_in[(x * packets_size) + 13] & 0x1f) << 8) | (databuf_in[(x * packets_size) + 14] & 0xff);
+	short pcr_pid = (((*databuf_in)[(x * packets_size) + 13] & 0x1f) << 8) | ((*databuf_in)[(x * packets_size) + 14] & 0xff);
 	//std::cout << "pcr_pid: " << pcr_pid << std::endl;
 	short stream_type;
 	short elementary_pid;
@@ -379,18 +376,18 @@ void	PMT_analysis(char databuf_in[16384], int &x, int &packets_size, short &sect
 	boucle_length = 0;
 	while (17 + boucle_length < section_length)
 	{
-		table_id_extension = (databuf_in[(x * packets_size) + 8] << 8) | (databuf_in[(x * packets_size) + 9] & 0xff);
+		table_id_extension = ((*databuf_in)[(x * packets_size) + 8] << 8) | ((*databuf_in)[(x * packets_size) + 9] & 0xff);
 		// octet 17 = premier stream type boucle jusque fin de section
-		stream_type = databuf_in[(x * packets_size) + 17 + boucle_length];
+		stream_type = (*databuf_in)[(x * packets_size) + 17 + boucle_length];
 		//octet 18-19 = premier elementary pid
-		elementary_pid = ((databuf_in[(x * packets_size) + 18 + boucle_length] & 0x1f) << 8) | (databuf_in[(x * packets_size) + 19 + boucle_length] & 0xff);
+		elementary_pid = (((*databuf_in)[(x * packets_size) + 18 + boucle_length] & 0x1f) << 8) | ((*databuf_in)[(x * packets_size) + 19 + boucle_length] & 0xff);
 		//octet 20-21 = es_info_length_length 
 		// es_info_length_length give the number of bytes (right after bytes 20-21) that are used for Descriptor enum (Descriptor section in Wikipedia)
-		es_info_length_length = ((databuf_in[(x * packets_size) + 20 + boucle_length] & 0x3) << 8) | (databuf_in[(x * packets_size) + 21 + boucle_length] & 0xff);
+		es_info_length_length = (((*databuf_in)[(x * packets_size) + 20 + boucle_length] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 21 + boucle_length] & 0xff);
 		// octet 22 = premier descriptor_tag
-		descriptor_tag = databuf_in[(x * packets_size) + 22 + boucle_length];
+		descriptor_tag = (*databuf_in)[(x * packets_size) + 22 + boucle_length];
 		// octet 23 = premiere definition du nombre d'octet qui suive l'octet 23 pour la description du descriptor
-		descriptor_length = databuf_in[(x * packets_size) + 23 + boucle_length];		
+		descriptor_length = (*databuf_in)[(x * packets_size) + 23 + boucle_length];		
 				
 		/*std::cout << "stream_type: " << stream_type << " elementary_pid: " << elementary_pid << " es_info_length_length: "
 		<< es_info_length_length << " boucle_length: " << boucle_length << std::endl;
@@ -421,8 +418,8 @@ void	PMT_analysis(char databuf_in[16384], int &x, int &packets_size, short &sect
 		*/
 		while (es_counter != es_info_length_length)
 		{
-			descriptor_tag = databuf_in[(x * packets_size) + 22 + boucle_length + es_counter];
-			descriptor_length = databuf_in[(x * packets_size) + 23 + boucle_length + es_counter];
+			descriptor_tag = (*databuf_in)[(x * packets_size) + 22 + boucle_length + es_counter];
+			descriptor_length = (*databuf_in)[(x * packets_size) + 23 + boucle_length + es_counter];
 	
 		/*	std::cout << "descriptor_tag: " << descriptor_tag << " descriptor_length: " << descriptor_length;
 			std::cout << " descriptor_info: ";
@@ -436,7 +433,7 @@ void	PMT_analysis(char databuf_in[16384], int &x, int &packets_size, short &sect
 	}
 }
 
-void	PAT_analysis(char databuf_in[16384], int &x, int &packets_size, short &section_length, std::list<Pid>::iterator pid_it)
+void	PAT_analysis(const char (*databuf_in)[16384], int &x, int &packets_size, short &section_length, std::list<Pid>::iterator pid_it)
 {
 	short pat_repetition_size = 4;
 	short repetition = 0;
@@ -448,8 +445,8 @@ void	PAT_analysis(char databuf_in[16384], int &x, int &packets_size, short &sect
 	// PMT PID / Program Map PID, begin at byte 15-16
 	while (15 + (repetition * pat_repetition_size) < section_length + 6) // 6 = byte number of section length begining 
 	{
-		short program_map_pid = ((databuf_in[(x * packets_size) + 15 + (repetition * pat_repetition_size)] & 0x1f) << 8) | 
-			(databuf_in[(x * packets_size) + 16] & 0xff);
+		short program_map_pid = (((*databuf_in)[(x * packets_size) + 15 + (repetition * pat_repetition_size)] & 0x1f) << 8) | 
+			((*databuf_in)[(x * packets_size) + 16] & 0xff);
 		
 		if ((pid_it = find_pid(program_map_pid, pid_list)) == pid_list.end())
 		{
@@ -465,11 +462,11 @@ void	PAT_analysis(char databuf_in[16384], int &x, int &packets_size, short &sect
 	}
 }
 
-int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_time::ptime &last_time_pcr)
+int	packet_monitoring(const char (*databuf_in)[16384], int &datalen_out, boost::posix_time::ptime &last_time_pcr)
 {
 	std::list<Pid>::iterator pid_it;
 	int packets_size;
-	if ((packets_size = packet_size_guessing(databuf_in, datalen_out)) == -1)
+	if ((packets_size = packet_size_guessing(databuf_in)) == -1)
 		return (1);
 	int packets_per_read = datalen_out / packets_size;
 		
@@ -480,16 +477,16 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 	// découpage packets lu par chaque read, creation list de pid et un vector permetant de compter packet par pid		
 	for (int x = 0; x != packets_per_read; x++)
 	{
-		if (databuf_in[(x * packets_size)] == 'G') // mpeg ts packet begins with octet 0 = G
+		if ((*databuf_in)[(x * packets_size)] == 'G') // mpeg ts packet begins with octet 0 = G
 		{
 			short PID; // PID
 			std::string type = "";
 			std::string description = "";
 			
-			PID = ((databuf_in[(x * packets_size) + 1] << 8) | databuf_in[(x * packets_size) + 2]) & 0x1fff;
+			PID = (((*databuf_in)[(x * packets_size) + 1] << 8) | (*databuf_in)[(x * packets_size) + 2]) & 0x1fff;
 			// octet 6-7 section length, "These bytes must not exceed a value of 1021"
 			short section_length;
-			if ((section_length= ((databuf_in[(x * packets_size) + 6] & 0x7) << 8) | (databuf_in[(x * packets_size) + 7] & 0xff)) > 1021)
+			if ((section_length= (((*databuf_in)[(x * packets_size) + 6] & 0x7) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff)) > 1021)
 				section_length = 0;
 			
 			pid_it = find_pid(PID, pid_list);
@@ -501,7 +498,7 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 				{
 					type = "DVB";
 					//check table id
-					if (databuf_in[(x * packets_size) + 5] == 66 || databuf_in[(x * packets_size) + 5] == 70)
+					if ((*databuf_in)[(x * packets_size) + 5] == 66 || (*databuf_in)[(x * packets_size) + 5] == 70)
 						description = "SDT";
 					if (pid_it == pid_list.end())
 						pid_list.emplace_back(PID, type, description, 0, 0, 99,0, false, 0);
@@ -525,16 +522,16 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 			//pid_it = pid.find_pid(PID);
 			(*pid_it).pkts_per_pids = (*pid_it).pkts_per_pids + 1;
 			
-			int continuity = databuf_in[(x * packets_size) + 3] & 0x0F;
+			int continuity = (*databuf_in)[(x * packets_size) + 3] & 0x0F;
 		
 			// Continuity Error Check
 			if (PID != 8191 && (*pid_it).last_continuity_counter_per_pid != 99) // PID 8191 n'a pas de continuity counter, On evite la comparaison de l'initialisation 99
 			{
-				if ((databuf_in[(x * packets_size) + 3] & (1u << 5))) // **1* **** Adaptation Field Control = 10 or 11
+				if (((*databuf_in)[(x * packets_size) + 3] & (1u << 5))) // **1* **** Adaptation Field Control = 10 or 11
 				{
-					if ((databuf_in[(x * packets_size) + 3] & (1u << 4))) // **11 **** Adaptation Field Control = 11
+					if (((*databuf_in)[(x * packets_size) + 3] & (1u << 4))) // **11 **** Adaptation Field Control = 11
 					{
-						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **11 1*** Adaptation Field Control = 11 and Discontinuity Indicator = 1
+						if (((*databuf_in)[(x * packets_size) + 5] & (1u << 7))) // **11 1*** Adaptation Field Control = 11 and Discontinuity Indicator = 1
 						{
 							if ((*pid_it).last_continuity_counter_per_pid != continuity) // verif =
 								std::cout << "Adaptation field control = 11 and Discontinuity Indicator = 1" <<std::endl;
@@ -557,7 +554,7 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 							(*pid_it).continuity_error_per_pid = (*pid_it).continuity_error_per_pid + 1;
 							std::cout << "Adaptation field control = 10 and continuity counter not equal to precedent continuity counter"<<std::endl;
 						}
-						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **10 1*** Adaptation Field Control = 10 and Discontinuity Indicator = 1
+						if (((*databuf_in)[(x * packets_size) + 5] & (1u << 7))) // **10 1*** Adaptation Field Control = 10 and Discontinuity Indicator = 1
 						{
 						
 						}
@@ -569,7 +566,7 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 				}
 				else // **0* **** Adaptation Field Control = 01 or 00				
 				{
-					if ((databuf_in[(x * packets_size) + 3] & (1u << 4))) // **01 **** Adaptation Field Control = 01 
+					if (((*databuf_in)[(x * packets_size) + 3] & (1u << 4))) // **01 **** Adaptation Field Control = 01 
 					{
 						// verif cc
 						if ((((*pid_it).last_continuity_counter_per_pid + 1 != continuity) && (*pid_it).last_continuity_counter_per_pid != 15) || ((*pid_it).last_continuity_counter_per_pid == 15 && continuity != 0))
@@ -580,7 +577,7 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 					}
 					else // **00 **** Adaptation Field Control = 00
 					{
-						if ((databuf_in[(x * packets_size) + 5] & (1u << 7))) // **00 1*** Adaptation Field Control = 00 and Discontinuity Indicator = 1
+						if (((*databuf_in)[(x * packets_size) + 5] & (1u << 7))) // **00 1*** Adaptation Field Control = 00 and Discontinuity Indicator = 1
 						{
 							++counter001;
 						}
@@ -594,7 +591,7 @@ int	packet_monitoring(char databuf_in[16384], int &datalen_out, boost::posix_tim
 			(*pid_it).last_continuity_counter_per_pid = continuity;
 		
 			// Check if its a packet with PCR field For interval calculation between 2 packets with pcr field
-			if ((*pid_it).contain_pcr == true && databuf_in[(x * packets_size) + 5] & (1u << 4)) // Checking if PCR flag = 1
+			if ((*pid_it).contain_pcr == true && (*databuf_in)[(x * packets_size) + 5] & (1u << 4)) // Checking if PCR flag = 1
 			{
 				boost::posix_time::ptime actual_time_pcr = boost::posix_time::microsec_clock::local_time();
 				boost::posix_time::time_duration diff = actual_time_pcr - last_time_pcr;
@@ -817,7 +814,7 @@ int	main(int argc, char **argv)
 		/*int len = strlen(databuf_in);
 		if (len > 3)
 		{*/
-		packet_monitoring(databuf_in, datalen_out, last_time_pcr);
+		packet_monitoring(&databuf_in, datalen_out, last_time_pcr);
       }
     }
 	return (0);
