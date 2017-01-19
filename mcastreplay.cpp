@@ -68,21 +68,24 @@ void	print()
 	static unsigned long long int	saved_value;
 	unsigned long int			debit;
 	while(1) {
+		boost::posix_time::ptime time = boost::posix_time::microsec_clock::local_time();
 		sleep(SLEEP_DURATION);
-		debit = ((octets_read - saved_value) * 8) / 60; // get debit = bite per second
+		boost::posix_time::time_duration time_elapsed = boost::posix_time::microsec_clock::local_time() - time;
+		
+		debit = ((octets_read - saved_value) * 8) / time_elapsed.total_seconds(); // get debit = bite per second
 		std::cout << "packets_read: " << packets_read << std::endl;
 		std::cout << "octets_read: " << octets_read << std::endl;
 		std::cout << "debit: " << debit << std::endl;
 		try {
-			fd_packets.open(dest_info_file + "Packets.txt", std::ofstream::out | std::ofstream::trunc);
-			fd_octets.open(dest_info_file + "Octets.txt", std::ofstream::out | std::ofstream::trunc);
-			fd_debit.open(dest_info_file + "Debit.txt", std::ofstream::out | std::ofstream::trunc);
+			fd_packets.open(strcat(atomic_dest_info_file.load(), "Packets.txt"), std::ofstream::out | std::ofstream::trunc);
+			fd_octets.open(strcat(atomic_dest_info_file.load(),"Octets.txt"), std::ofstream::out | std::ofstream::trunc);
+			fd_debit.open(strcat(atomic_dest_info_file.load(),"Debit.txt"), std::ofstream::out | std::ofstream::trunc);
 			if (fd_packets.fail())
-				std::cerr << "Opening " << dest_info_file << "Packets.txt failed" << std::endl;
+				std::cerr << "Opening " << atomic_dest_info_file.load() << "Packets.txt failed" << std::endl;
 			if (fd_octets.fail())
-				std::cerr << "Opening " << dest_info_file << "Octets.txt failed" << std::endl;
+				std::cerr << "Opening " << atomic_dest_info_file.load() << "Octets.txt failed" << std::endl;
 			if (fd_debit.fail())
-				std::cerr << "Opening " << dest_info_file << "Debit.txt failed" << std::endl;
+				std::cerr << "Opening " << atomic_dest_info_file.load() << "Debit.txt failed" << std::endl;
 			fd_packets << packets_read << std::endl;
 			fd_packets.flush();
 			fd_octets << octets_read << std::endl;
@@ -99,7 +102,7 @@ void	print()
 	}
 }
 
-int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl)
+int	init (int &argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl)
 {
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
@@ -183,16 +186,16 @@ int	init (int argc, char **argv, std::string &s_ingroup, int &s_inport, std::str
 	return (0);
 }
 
-int	packet_size_guessing(char databuf_in[16384], int size_read)
+int	packet_size_guessing(const char (*databuf_in)[16384])
 {
 	int size_testing[1] = {188};
 	
 	for(int x = 0; x != 1; x++)
 	{
 		int index = 0;
-		if (databuf_in[size_testing[x] * index++] == 'G' && 
-			databuf_in[size_testing[x] * index++] == 'G' &&
-			databuf_in[size_testing[x] * index++] == 'G')
+		if ((*databuf_in)[size_testing[x] * index++] == 'G' && 
+			(*databuf_in)[size_testing[x] * index++] == 'G' &&
+			(*databuf_in)[size_testing[x] * index++] == 'G')
 			return (size_testing[x]);
 	}
 	return (-1);
@@ -401,7 +404,7 @@ int	main(int argc, char **argv)
 		if (len > 3)
 		{*/
 	
-		int packets_size = packet_size_guessing(databuf_in, datalen_out);
+		int packets_size = packet_size_guessing(&databuf_in);
 		if (packets_size != -1)
 		{
 			int packets_per_read = datalen_out / packets_size;
