@@ -77,9 +77,16 @@ void	print()
 		std::cout << "octets_read: " << octets_read << std::endl;
 		std::cout << "debit: " << debit << std::endl;
 		try {
-			fd_packets.open(strcat(atomic_dest_info_file.load(), "Packets.txt"), std::ofstream::out | std::ofstream::trunc);
-			fd_octets.open(strcat(atomic_dest_info_file.load(),"Octets.txt"), std::ofstream::out | std::ofstream::trunc);
-			fd_debit.open(strcat(atomic_dest_info_file.load(),"Debit.txt"), std::ofstream::out | std::ofstream::trunc);
+			std::stringstream ss;
+			ss << atomic_dest_info_file.load() << "Packets.txt"; //file the stream 
+			fd_packets.open(ss.str(), std::ofstream::out | std::ofstream::trunc); // open file with name in stream
+			ss.str(std::string()); // clear stream
+			ss << atomic_dest_info_file.load() << "Octets.txt";
+			fd_octets.open(ss.str(), std::ofstream::out | std::ofstream::trunc);
+			ss.str(std::string());
+			ss << atomic_dest_info_file.load() << "Debit.txt";
+			fd_debit.open(ss.str(), std::ofstream::out | std::ofstream::trunc);
+			ss.str(std::string());
 			if (fd_packets.fail())
 				std::cerr << "Opening " << atomic_dest_info_file.load() << "Packets.txt failed" << std::endl;
 			if (fd_octets.fail())
