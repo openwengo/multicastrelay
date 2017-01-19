@@ -521,10 +521,10 @@ int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, b
 			else if (PID == 0) // PAT
 				PAT_analysis(databuf_in, x, packets_size, section_length, PID);
 			// PMT
-			else if (pid_vector[PID].description == "PMT")		
+			else if (pid_vector[PID].exist == true &&  pid_vector[PID].description == "PMT")		
 				PMT_analysis(databuf_in, x, packets_size, section_length);
 			// PES
-			else if (pid_vector[PID].type == "PES")
+			else if (pid_vector[PID].exist == true && pid_vector[PID].type == "PES")
 				PES_analysis(packets_size, x, databuf_in, PID);
 
 			pid_vector[PID].pkts_per_pids = pid_vector[PID].pkts_per_pids + 1;
