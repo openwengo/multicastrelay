@@ -195,6 +195,8 @@ void	print(int interval)
 		{
 			std::cerr << "Exception: " << e.what() << std::endl;
 		}
+		max_interval_value_between_packets = 0;
+		max_interval_value_between_pcr = 0;
 	}
 }
 
