@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <iostream> 
 #include <string>
@@ -17,6 +18,7 @@
 #include <algorithm>
 #include <thread>
 #include <stdexcept>
+#include <mutex>
 
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
@@ -24,26 +26,30 @@
 #include <boost/filesystem.hpp>
 
 #include "pid.hpp"
+#include "packets_general_info.hpp"
 
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
 #define DEFAULT_SLEEP_DURATION 60
 #define NBR_PID_MAX 8192
 
-//std::list<short> 					pid_list;
-std::atomic<unsigned long long int>	packets_read(0);
-std::atomic<unsigned long long int>	octets_read(0);
-std::atomic<char*>					atomic_dest_info_file;
-std::atomic<unsigned long long int> max_interval_value_between_packets(0);
-std::atomic<unsigned long long int>	max_interval_value_between_pcr(0);
+static std::map<int, std::string>	dvb_description = { 
+															{16,"NIT"}, {17,"SDT"}, {18,"EIT"}, {19,"RST"}, {20,"TDT"}, {21,"network synchronization"},
+															{22,"RNT"}, {23,"reserved for future use"}, {24,"reserved for future use"},
+															{25,"reserved for future use"}, {26,"reserved for future use"}, {27,"reserved for future use"},
+															{28,"inband signalling"}, {29,"measurement"}, {30,"DIT"}, {31,"SIT"}
+															};
 
-std::atomic<int> counter001(0);
-std::atomic<int> counter000(0);
+std::atomic<bool>	ask_for_find_the_gop(false);
+std::atomic<bool>	ask_force_switch(false);
 
-static std::string 		s_ingroup;
-static int  			s_inport;
-static std::string 		s_inip;
-
-std::vector<Pid>	pid_vector(NBR_PID_MAX); // pid 0 to 8191 = vector of size 8192
+void	callback_signal_handler(int sign)
+{
+	
+	std::cout << "callback_signal_handler" << std::endl;
+	std::thread::id this_id = std::this_thread::get_id();
+	std::cout << "thread id " << this_id << std::endl;
+	ask_for_find_the_gop = true;
+}
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
@@ -73,7 +79,7 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
     return res;
 }
 
-void	print(int interval)
+void	print(const std::string &inip, const int &inport, const int &interval, std::vector<Pid> &pid_vector, Packet_info &packet)
 {
 	std::ofstream									fd_packets;
 	std::ofstream									fd_octets;
@@ -90,150 +96,175 @@ void	print(int interval)
 		boost::posix_time::ptime time = boost::posix_time::microsec_clock::local_time();
 		sleep(interval);
 		boost::posix_time::time_duration time_elapsed = boost::posix_time::microsec_clock::local_time() - time;
-
-		for (int cursor = 0 ; cursor != NBR_PID_MAX; cursor++)
+		
+		if (packet.is_process_mandatory == true)
 		{
-			if (pid_vector[cursor].exist == true)
+			for (int cursor = 0 ; cursor != NBR_PID_MAX; cursor++)
 			{
-				// Ecriture des fichiers "pkts_in_ip_port du flux entrant_pidN" Pour tout N
-				try
+				if (pid_vector[cursor].exist == true)
 				{
-/*file the stream*/	string_stream << atomic_dest_info_file.load() << "pkts_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string(pid_vector[cursor].pid) << ".txt";
-					fd.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc); //open file with name in stream
-					if (fd.fail())
-						std::cerr << string_stream.str() << " failed" << std::endl;
-					string_stream.str(std::string()); // clear stream
-					double packets_per_second = (pid_vector[cursor].pkts_per_pids - pid_vector[cursor].packet_per_pid_saved_value) / (double)time_elapsed.total_seconds();
-					pid_vector[cursor].packet_per_pid_saved_value.store(pid_vector[cursor].pkts_per_pids, std::memory_order_relaxed);
-					fd << packets_per_second << std::endl;
-					fd.flush();
-					fd.close();
-				}
-				catch(std::exception &e)
-				{
-					std::cerr << "Exception: " << e.what() << std::endl;
-				}
-				
-				// Ecriture des fichiers "continuity_error_in_ip_port du flux entrant_pidN" Pour tout N
-				try
-				{
-					string_stream << atomic_dest_info_file.load() << "continuity_error_in_" << s_inip << "_" << std::to_string(s_inport) << "_" << std::to_string(pid_vector[cursor].pid) << ".txt";
-					fd.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
-					if (fd.fail())
-						std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
-					string_stream.str(std::string());
-					std::cout << "PID: " << pid_vector[cursor].pid << " = " << pid_vector[cursor].continuity_error_per_pid << " continuity errors" << std::endl;
-					fd << pid_vector[cursor].continuity_error_per_pid << std::endl;
-					fd.flush();
-					fd.close();
-				}
-				catch(std::exception &e)
-				{
-					std::cerr << "Exception: " << e.what() << std::endl;
+					// Ecriture des fichiers "pkts_in_ip_port du flux entrant_pidN" Pour tout N
+					try
+					{
+	/*file the stream*/	string_stream << packet.atomic_dest_info_file.load() << "pkts_in_" << inip << "_" << std::to_string(inport) << "_" << std::to_string(pid_vector[cursor].pid) << ".txt";
+						fd.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc); //open file with name in stream
+						if (fd.fail())
+							std::cerr << string_stream.str() << " failed" << std::endl;
+						string_stream.str(std::string()); // clear stream
+						double packets_per_second = (pid_vector[cursor].pkts_per_pids - pid_vector[cursor].packet_per_pid_saved_value) / (double)time_elapsed.total_seconds();
+						pid_vector[cursor].packet_per_pid_saved_value.store(pid_vector[cursor].pkts_per_pids, std::memory_order_relaxed);
+						fd << packets_per_second << std::endl;
+						fd.flush();
+						fd.close();
+					}
+					catch(std::exception &e)
+					{
+						std::cerr << "Exception: " << e.what() << std::endl;
+					}
+					
+					// Ecriture des fichiers "continuity_error_in_ip_port du flux entrant_pidN" Pour tout N
+					try
+					{
+						string_stream << packet.atomic_dest_info_file.load() << "continuity_error_in_" << inip << "_" << std::to_string(inport) << "_" << std::to_string(pid_vector[cursor].pid) << ".txt";
+						fd.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
+						if (fd.fail())
+							std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
+						string_stream.str(std::string());
+						std::cout << "PID: " << pid_vector[cursor].pid << " = " << pid_vector[cursor].continuity_error_per_pid << " continuity errors" << std::endl
+						<< "type : " << pid_vector[cursor].type << " description : " << pid_vector[cursor].description << std::endl << std::endl;
+						fd << pid_vector[cursor].continuity_error_per_pid << std::endl;
+						fd.flush();
+						fd.close();
+					}
+					catch(std::exception &e)
+					{
+						std::cerr << "Exception: " << e.what() << std::endl;
+					}
 				}
 			}
+			// Ecriture des Fichiers Octects.txt Packets.txt Debit.txt
+			debit = ((packet.octets_read - saved_value) * 8) / time_elapsed.total_seconds(); // get debit = bite per second
+			std::cout << "packet.packets_read: " << packet.packets_read << std::endl;
+			std::cout << "packet.octets_read: " << packet.octets_read << std::endl;
+			std::cout << "debit: " << debit << std::endl;
+			std::cout << "interval max between two packets: " << packet.max_interval_value_between_packets << " milliseconds" << std::endl;
+			std::cout << "interval max between two packets with pcr: " << packet.max_interval_value_between_pcr << " milliseconds" << std::endl;
+			try
+			{
+				string_stream << packet.atomic_dest_info_file.load() << "Packets.txt";
+				fd_packets.open(string_stream.str() , std::ofstream::out | std::ofstream::trunc);
+				if (fd_packets.fail())
+					std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
+				string_stream.str(std::string());
+				
+				string_stream << packet.atomic_dest_info_file.load() << "Octets.txt";
+				fd_octets.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
+				if (fd_octets.fail())
+					std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
+				string_stream.str(std::string());
+				
+				string_stream << packet.atomic_dest_info_file.load() << "Debit.txt";
+				fd_debit.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
+				if (fd_debit.fail())
+					std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
+				string_stream.str(std::string());
+				
+				string_stream << packet.atomic_dest_info_file.load() << "Millisecond_intervale_max_between_packets.txt";
+				fd_interval.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
+				if (fd_interval.fail())
+					std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
+				string_stream.str(std::string());
+				
+				string_stream << packet.atomic_dest_info_file.load() << "Millisecond_intervale_max_between_packets_pcr.txt";
+				fd_interval_pcr.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
+				if (fd_interval_pcr.fail())
+					std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;			
+				string_stream.str(std::string());
+				
+				fd_packets << packet.packets_read << std::endl;
+				fd_packets.flush();
+				fd_octets << packet.octets_read << std::endl;
+				fd_octets.flush();
+				fd_debit << debit << std::endl;
+				fd_debit.flush();
+				fd_interval << packet.max_interval_value_between_packets << std::endl;
+				fd_interval.flush();
+				fd_interval_pcr << packet.max_interval_value_between_pcr << std::endl;
+				fd_interval_pcr.flush();
+				fd_packets.close();
+				fd_octets.close();
+				fd_debit.close();
+				fd_interval.close();
+				fd_interval_pcr.close();
+				saved_value = packet.octets_read;
+			}
+			catch(std::exception &e)
+			{
+				std::cerr << "Exception: " << e.what() << std::endl;
+			}
+			packet.max_interval_value_between_packets = 0;
+			packet.max_interval_value_between_pcr = 0;
+			std::cout << ask_for_find_the_gop << std::endl;
 		}
-		// Ecriture des Fichiers Octects.txt Packets.txt Debit.txt
-		debit = ((octets_read - saved_value) * 8) / time_elapsed.total_seconds(); // get debit = bite per second
-		std::cout << "packets_read: " << packets_read << std::endl;
-		std::cout << "octets_read: " << octets_read << std::endl;
-		std::cout << "debit: " << debit << std::endl;
-		std::cout << "interval max between two packets: " << max_interval_value_between_packets << " milliseconds" << std::endl;
-		std::cout << "interval max between two packets with pcr: " << max_interval_value_between_pcr << " milliseconds" << std::endl;
-		try
-		{
-			string_stream << atomic_dest_info_file.load() << "Packets.txt";
-			fd_packets.open(string_stream.str() , std::ofstream::out | std::ofstream::trunc);
-			if (fd_packets.fail())
-				std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
-			string_stream.str(std::string());
-			
-			string_stream << atomic_dest_info_file.load() << "Octets.txt";
-			fd_octets.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
-			if (fd_octets.fail())
-				std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
-			string_stream.str(std::string());
-			
-			string_stream << atomic_dest_info_file.load() << "Debit.txt";
-			fd_debit.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
-			if (fd_debit.fail())
-				std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
-			string_stream.str(std::string());
-			
-			string_stream << atomic_dest_info_file.load() << "Millisecond_intervale_max_between_packets.txt";
-			fd_interval.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
-			if (fd_interval.fail())
-				std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
-			string_stream.str(std::string());
-			
-			string_stream << atomic_dest_info_file.load() << "Millisecond_intervale_max_between_packets_pcr.txt";
-			fd_interval_pcr.open(string_stream.str(), std::ofstream::out | std::ofstream::trunc);
-			if (fd_interval_pcr.fail())
-				std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;			
-			string_stream.str(std::string());
-			
-			fd_packets << packets_read << std::endl;
-			fd_packets.flush();
-			fd_octets << octets_read << std::endl;
-			fd_octets.flush();
-			fd_debit << debit << std::endl;
-			fd_debit.flush();
-			fd_interval << max_interval_value_between_packets << std::endl;
-			fd_interval.flush();
-			fd_interval_pcr << max_interval_value_between_pcr << std::endl;
-			fd_interval_pcr.flush();
-			fd_packets.close();
-			fd_octets.close();
-			fd_debit.close();
-			fd_interval.close();
-			fd_interval_pcr.close();
-			saved_value = octets_read;
-		
-		std::cout << "counter000 " << counter000 << "\ncounter001 " << counter001 << std::endl;
-		}
-		catch(std::exception &e)
-		{
-			std::cerr << "Exception: " << e.what() << std::endl;
-		}
-		max_interval_value_between_packets = 0;
-		max_interval_value_between_pcr = 0;
 	}
 }
 
-int	init (const int &argc, char **argv, std::string &s_ingroup, int &s_inport, std::string &s_inip, std::string &s_outgroup, int &s_outport, std::string &s_outip, int &ttl, int &interval)
+int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_main, std::string &inip_main, std::string &outgroup_main, 
+									int &outport_main, std::string &outip_main, int &ttl_main,
+								 std::string &ingroup_second, int &inport_second, std::string &inip_second, std::string &outgroup_second, 
+									int &outport_second, std::string &outip_second, int &ttl_second,
+									std::string &dest_info_file_main, std::string &dest_info_file_second, int &interval_main, int &interval_second)
 {
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
 	boost::program_options::variables_map file_boost_map;
 	std::string config_file = DEFAULT_FILE_CONFIG;
-	std::string 			temp_dest_info_file;
+//	std::string 			temp_dest_info_file;
 	
 	file_description.add_options()
-	("In.Group", boost::program_options::value<std::string>(&s_ingroup)->default_value(""), "Group In")
-	("In.Ip", boost::program_options::value<std::string>(&s_inip)->default_value(""), "Ip In")
-	("In.Port", boost::program_options::value<int>(&s_inport)->default_value(0), "Port In")
-	("Out.Group", boost::program_options::value<std::string>(&s_outgroup)->default_value(""), "Group Out")
-	("Out.Ip", boost::program_options::value<std::string>(&s_outip)->default_value(""), "Ip Out")
-	("Out.Port", boost::program_options::value<int>(&s_outport)->default_value(0), "Port Out")
-	("Out.Ttl", boost::program_options::value<int>(&ttl)->default_value(0), "Ttl Out")
-	("Out.StatsPath", boost::program_options::value<std::string>(&temp_dest_info_file)->default_value(""), "Stats Path")
-	("Out.Interval", boost::program_options::value<int>(&interval)->default_value(DEFAULT_SLEEP_DURATION), "Interval between each print out/file in seconds");
+	("InMain.Group", boost::program_options::value<std::string>(&ingroup_main)->default_value(""), 						"Group Main In")
+	("InMain.Ip", boost::program_options::value<std::string>(&inip_main)->default_value(""), 							"Ip Main In")
+	("InMain.Port", boost::program_options::value<int>(&inport_main)->default_value(0), 								"Port Main In")
+	("OutMain.Group", boost::program_options::value<std::string>(&outgroup_main)->default_value(""), 					"Group Main Out")
+	("OutMain.Ip", boost::program_options::value<std::string>(&outip_main)->default_value(""), 							"Ip Main Out")
+	("OutMain.Port", boost::program_options::value<int>(&outport_main)->default_value(0), 								"Port Main Out")
+	("OutMain.Ttl", boost::program_options::value<int>(&ttl_main)->default_value(0), 									"Ttl Main Out")
+	("OutMain.StatsPath", boost::program_options::value<std::string>(&dest_info_file_main)->default_value(""), 			"Main Stats Path")
+	("OutMain.Interval", boost::program_options::value<int>(&interval_main)->default_value(DEFAULT_SLEEP_DURATION),		"Main Interval between each print out/file in seconds")
+	("InSecond.Group", boost::program_options::value<std::string>(&ingroup_second)->default_value(""), 					"Group Second In")
+	("InSecond.Ip", boost::program_options::value<std::string>(&inip_second)->default_value(""), 						"Ip Second In")
+	("InSecond.Port", boost::program_options::value<int>(&inport_second)->default_value(0), 							"Port Second In")
+	("OutSecond.Group", boost::program_options::value<std::string>(&outgroup_second)->default_value(""), 				"Group Second Out")
+	("OutSecond.Ip", boost::program_options::value<std::string>(&outip_second)->default_value(""), 						"Ip Second Out")
+	("OutSecond.Port", boost::program_options::value<int>(&outport_second)->default_value(0),							"Port Second Out")
+	("OutSecond.Ttl", boost::program_options::value<int>(&ttl_second)->default_value(0),								"Ttl Second Out")
+	("OutSecond.StatsPath", boost::program_options::value<std::string>(&dest_info_file_second)->default_value(""), 		"Second Stats Path")
+	("OutSecond.Interval", boost::program_options::value<int>(&interval_second)->default_value(DEFAULT_SLEEP_DURATION),	"Second Interval between each print out/file in seconds");
 	
 	// Option from Command Line recuperation
 	boost::program_options::options_description description("Command Line Options");
 	boost::program_options::variables_map boost_map;
 	
 	description.add_options()
-	("ingroup", boost::program_options::value<std::string>(&s_ingroup), "Group In")
-	("inip", boost::program_options::value<std::string>(&s_inip), "Ip In")
-	("inport", boost::program_options::value<int>(&s_inport), "Port In")
-	("outgroup", boost::program_options::value<std::string>(&s_outgroup), "Group Out")
-	("outip", boost::program_options::value<std::string>(&s_outip), "Ip Out")
-	("outport", boost::program_options::value<int>(&s_outport), "Port Out")
-	("statspath", boost::program_options::value<std::string>(&temp_dest_info_file), "Stats Path")
-	("config", boost::program_options::value<std::string>(&config_file), "Config File Name")
-	("ttl", boost::program_options::value<int>(&ttl), "Ttl Out")
-	("interval", boost::program_options::value<int>(&interval), "Interval between each print out/file in seconds")
+	("ingroup_main", boost::program_options::value<std::string>(&ingroup_main), 			"Main Group In")
+	("inip_main", boost::program_options::value<std::string>(&inip_main), 					"Main Ip In")
+	("inport_main", boost::program_options::value<int>(&inport_main), 						"Main Port In")
+	("outgroup_main", boost::program_options::value<std::string>(&outgroup_main), 			"Main Group Out")
+	("outip_main", boost::program_options::value<std::string>(&outip_main), 				"MainIp Out")
+	("outport_main", boost::program_options::value<int>(&outport_main), 					"Main Port Out")
+	("ttl_main", boost::program_options::value<int>(&ttl_main), 							"Main Ttl Out")
+	("statspath_main", boost::program_options::value<std::string>(&dest_info_file_main),"Main Stats Path")
+	("interval_main", boost::program_options::value<int>(&interval_main), 				"Main Interval between each print out/file in seconds")
+	("ingroup_second", boost::program_options::value<std::string>(&ingroup_second), 		"Second Group In")
+	("inip_second", boost::program_options::value<std::string>(&inip_second), 				"Second Ip In")
+	("inport_second", boost::program_options::value<int>(&inport_second), 					"Second Port In")
+	("outgroup_second", boost::program_options::value<std::string>(&outgroup_second), 		"Second Group Out")
+	("outip_second", boost::program_options::value<std::string>(&outip_second), 			"Second Ip Out")
+	("outport_second", boost::program_options::value<int>(&outport_second), 				"Second Port Out")
+	("ttl_second", boost::program_options::value<int>(&ttl_second), 						"Second Ttl Out")
+	("statspath_second", boost::program_options::value<std::string>(&dest_info_file_second),"Second Stats Path")
+	("interval_second", boost::program_options::value<int>(&interval_second), 				"Second Interval between each print out/file in seconds")
+	("config", boost::program_options::value<std::string>(&config_file), 					"Config File Name")
 	("help", "Help Screen");
 	
 	try
@@ -260,7 +291,10 @@ int	init (const int &argc, char **argv, std::string &s_ingroup, int &s_inport, s
 		return (1);
 	}
 	
-	if (s_ingroup.empty() == true || s_inip.empty() == true || s_inport == 0 || s_outgroup.empty() == true || s_outip.empty() == true || s_outport == 0 || ttl == 0)
+	if (ingroup_main.empty() == true || inip_main.empty() == true || inport_main == 0 || outgroup_main.empty() == true || 
+		outip_main.empty() == true || outport_main == 0 || ttl_main == 0 || 
+		ingroup_second.empty() == true || inip_second.empty() == true || inport_second == 0 || outgroup_second.empty() == true || 
+		outip_second.empty() == true || outport_second == 0 || ttl_second == 0)
 	{
 		std::cerr << "Group, Ip, Port from In/Out and Ttl Out needed to run it" << std::endl;
 		std::cerr << description << std::endl << file_description << std::endl;
@@ -271,18 +305,26 @@ int	init (const int &argc, char **argv, std::string &s_ingroup, int &s_inport, s
 		std::cerr << description << std::endl << file_description << std::endl;
 		return (1);
 	}
-	if ( temp_dest_info_file != "" )
-	{
- 	   try {
- 	      if (!boost::filesystem::is_directory(temp_dest_info_file)) {
- 	         boost::filesystem::create_directories(temp_dest_info_file);
- 	      }
- 	   } catch (const boost::filesystem::filesystem_error& e) {
- 	         std::cerr << "Failed to check or create directory:" << temp_dest_info_file << " with error:" << e.what() << std::endl;
- 	         return(1) ;
- 	   }
- 	}
-	atomic_dest_info_file.store((char*)temp_dest_info_file.c_str(), std::memory_order_relaxed);
+	if ( dest_info_file_main != "" ) {
+	   try {
+	      if (!boost::filesystem::is_directory(dest_info_file_main)) {
+	         boost::filesystem::create_directories(dest_info_file_main);
+	      }
+	   } catch (const boost::filesystem::filesystem_error& e) {
+	         std::cerr << "Failed to check or create directory:" << dest_info_file_main << " with error:" << e.what() << std::endl;
+	         return(1) ;
+	   }
+	}
+	if ( dest_info_file_second != "" ) {
+	   try {
+	      if (!boost::filesystem::is_directory(dest_info_file_second)) {
+	         boost::filesystem::create_directories(dest_info_file_second);
+	      }
+	   } catch (const boost::filesystem::filesystem_error& e) {
+	         std::cerr << "Failed to check or create directory:" << dest_info_file_second << " with error:" << e.what() << std::endl;
+	         return(1) ;
+	   }
+	}
 	return (0);
 }
 
@@ -302,7 +344,7 @@ int	packet_size_guessing(const char (*databuf_in)[16384])
 }
 
 // 00000000 00000000 00000001 (1110**** for video or 110***** for audio) = PES start code
-int	PES_analysis(const int &packets_size, const int &x, const char (*databuf_in)[16384], const short &PID)
+int	PES_analysis(const int &packets_size, const int &x, const char (*databuf_in)[16384], const short &PID, std::vector<Pid>	&pid_vector, Packet_info &packet)
 {
 	
 	// IN test, arrange this function when finished
@@ -313,11 +355,12 @@ int	PES_analysis(const int &packets_size, const int &x, const char (*databuf_in)
 	
 	for (pos = 0; pos != packets_size; pos++)
 		{
-			if ((((x * packets_size) + pos + 1) <= ((x + 1) * packets_size)) && (((x * packets_size) + pos + 2) <= ((x + 1) * packets_size)))
+			//if ((((x * packets_size) + pos + 1) <= ((x + 1) * packets_size)) && (((x * packets_size) + pos + 2) <= ((x + 1) * packets_size)))
 				if ((*databuf_in)[(x * packets_size) + pos] == 0 && (*databuf_in)[(x * packets_size) + pos + 1] == 0 && (*databuf_in)[(x * packets_size) + pos + 2] == 1)
 				{
+					// prefix start code 00000000 00000000 00000001
 					//std::cout << "PID: " << PID << " stream id " << std::bitset<8>(databuf_in[(x * packets_size) + pos + 3]) << std::endl;
-					short pes_length = (((*databuf_in)[(x * packets_size) + pos + 4] << 8) | (*databuf_in)[(x * packets_size) + pos + 5]);
+					short pes_length = (((*databuf_in)[(x * packets_size) + pos + 4] << 8) | ((*databuf_in)[(x * packets_size) + pos + 5] & 0xff));
 					//std::cout << "PES packet length " << pes_length << std::endl;
 					short header_pes_len = (*databuf_in)[(x * packets_size) + pos + 8];
 					//std::cout << "PES header length " << header_pes_len << std::endl;
@@ -335,9 +378,42 @@ int	PES_analysis(const int &packets_size, const int &x, const char (*databuf_in)
 						++s_audio_packet_nbr;
 					}
 					//pid.print_list();
-					break;
+					if (packet.is_process_mandatory == false)
+					{
+						static int porte;
+						if (porte == 0)
+							std::cout << "not mandatory" << std::endl;
+						porte = 1;
+						//std::cout << "video_packet: " << s_video_packet_nbr << " pes_length: " << pes_length << std::endl;
+						if (ask_for_find_the_gop == true /*x == 0 &&*/ /*&& (*databuf_in)[(x * packets_size) + pos + 4] > 0 && ((*databuf_in)[(x * packets_size) + pos + 5] & (1u << 6))*/
+								/* && (*databuf_in)[(x * packets_size) + pos] == 0
+								&& (*databuf_in)[(x * packets_size) + pos + 1] == 0
+								&& (*databuf_in)[(x * packets_size) + pos + 2] == 1*/
+								//&& std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]).to_string<char,std::string::traits_type,std::string::allocator_type>() == "11100000"
+								&& (*databuf_in)[(x * packets_size) + pos + 3] == 0
+								/*&& ((*databuf_in)[(x * packets_size) + pos + 5] & (1u << 3))
+								&& ((*databuf_in)[(x * packets_size) + pos + 5] & (1u << 4)) == 0
+								&& ((*databuf_in)[(x * packets_size) + pos + 5] & (1u << 5)) == 0*/)
+						{
+							int i = 0 ;// x * packets_size;
+							//std::cout << "PID: " << PID << std::endl;
+							while (i != /*(x * packets_size) + */packets_size)
+							{
+								std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
+								++i;
+							}
+							std::cout << "x: " << x << " pos: " << pos << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 1]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 2])
+							<< " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4])
+							<< " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 5]);
+							std::cout << std::endl << std::endl;
+							/*ask_for_find_the_gop = false;
+							ask_force_switch = true;*/
+						}
+					}
+					//break;
 				}
 		}
+	
 	return (0);
 	/*int i = x * packets_size;
 	std::cout << "PID: " << PID << std::endl;
@@ -349,7 +425,7 @@ int	PES_analysis(const int &packets_size, const int &x, const char (*databuf_in)
 	std::cout << std::endl;*/
 }
 
-void	PMT_analysis(const char (*databuf_in)[16384], const int &x, const int &packets_size, const short &section_length)
+void	PMT_analysis(const char (*databuf_in)[16384], const int &x, const int &packets_size, const short &section_length, std::vector<Pid> &pid_vector, Packet_info &packet)
 {
 	//octet 13 14 pcr pid
 	short pcr_pid = (((*databuf_in)[(x * packets_size) + 13] & 0x1f) << 8) | ((*databuf_in)[(x * packets_size) + 14] & 0xff);
@@ -368,8 +444,23 @@ void	PMT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 	
 	// skip this number of bytes (boucle_length) to get an other stream_type
 	boucle_length = 0;
+
+	if (packet.is_process_mandatory == true)
+	{
+		int i = x * packets_size;
+		std::cout << i << " " << x * packets_size << std::endl; 
+		while (i != ((x * packets_size) + packets_size))
+		{
+			std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
+			++i;
+		}
+		std::cout << std::endl;
+	}
+	
 	while (17 + boucle_length < section_length)
 	{
+		if (packet.is_process_mandatory == true)
+			std::cout << "premier while" << std::endl;
 		table_id_extension = ((*databuf_in)[(x * packets_size) + 8] << 8) | ((*databuf_in)[(x * packets_size) + 9] & 0xff);
 		// octet 17 = premier stream type boucle jusque fin de section
 		stream_type = (*databuf_in)[(x * packets_size) + 17 + boucle_length];
@@ -381,12 +472,13 @@ void	PMT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 		// octet 22 = premier descriptor_tag
 		descriptor_tag = (*databuf_in)[(x * packets_size) + 22 + boucle_length];
 		// octet 23 = premiere definition du nombre d'octet qui suive l'octet 23 pour la description du descriptor
-		descriptor_length = (*databuf_in)[(x * packets_size) + 23 + boucle_length];		
-				
+		descriptor_length = (*databuf_in)[(x * packets_size) + 23 + boucle_length] & 0xff;		
 		/*std::cout << "stream_type: " << stream_type << " elementary_pid: " << elementary_pid << " es_info_length_length: "
 		<< es_info_length_length << " boucle_length: " << boucle_length << std::endl;
 		*/
 		bool pcr = false;
+		if (packet.is_process_mandatory == true)
+			std::cout << "elementary pid: " << elementary_pid << std::endl;
 		if (pid_vector[elementary_pid].exist == false)
 		{
 			pid_vector[elementary_pid].exist = true;
@@ -395,6 +487,8 @@ void	PMT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 			pid_vector[elementary_pid].pid = elementary_pid;
 			pid_vector[elementary_pid].type = "PES";
 			pid_vector[elementary_pid].description = "";
+			if (packet.is_process_mandatory == true)
+				std::cout << "elementary pid: " << elementary_pid << " " << pid_vector[elementary_pid].exist << " " << pid_vector[elementary_pid].type << std::endl;
 		}
 		else
 		{
@@ -403,7 +497,7 @@ void	PMT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 			pid_vector[elementary_pid].type = "PES";
 		}
 		es_counter = 2 + descriptor_length; // (2 = bytes used by descriptor_tag and descriptor_length) + bytes used for description of destructor_tag
-				
+		
 		/*std::cout << "program number: " << table_id_extension << std::endl;
 		std::cout << "descriptor_tag: " << descriptor_tag << " descriptor_length: " << descriptor_length;
 		std::cout << " descriptor_info: ";
@@ -411,30 +505,28 @@ void	PMT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 		std::cout << " " << std::bitset<8>(databuf_in[(x * packets_size) + 23 + boucle_length + i]);
 		std::cout << std::endl;
 		*/
-		while (es_counter != es_info_length_length)
+		while (es_counter < es_info_length_length)
 		{
 			descriptor_tag = (*databuf_in)[(x * packets_size) + 22 + boucle_length + es_counter];
 			descriptor_length = (*databuf_in)[(x * packets_size) + 23 + boucle_length + es_counter];
-	
-		/*	std::cout << "descriptor_tag: " << descriptor_tag << " descriptor_length: " << descriptor_length;
-			std::cout << " descriptor_info: ";
-			for (int i = 1; i <= descriptor_length; i++)
-			std::cout << " " << std::bitset<8>(databuf_in[(x * packets_size) + 23 + boucle_length + es_counter + i]);
-			std::cout << std::endl << std::endl;
-		*/
+				/*std::cout << "descriptor_tag: " << descriptor_tag << " descriptor_length: " << descriptor_length;
+				std::cout << " descriptor_info: ";
+				for (int i = 1; i <= descriptor_length; i++)
+				std::cout << " " << std::bitset<8>(databuf_in[(x * packets_size) + 23 + boucle_length + es_counter + i]);
+				std::cout << std::endl << std::endl;*/
 			es_counter = es_counter + 2 + descriptor_length; // (2 = bytes used by descriptor_tag and descriptor_length) + bytes used for description of destructor_tag
 		}
 		boucle_length = boucle_length + es_info_length_length + 5;
 	}
 }
 
-void	PAT_analysis(const char (*databuf_in)[16384], const int &x, const int &packets_size, const short &section_length, const short &PID)
+void	PAT_analysis(const char (*databuf_in)[16384], const int &x, const int &packets_size, const short &section_length, const short &PID, std::vector<Pid> &pid_vector, Packet_info &packet)
 {
 	short pat_repetition_size = 4;
 	short repetition = 0;
-	// Program num
-	/* 16bit value = (((databuf_in[(x * packets_size) + 13] & 0xff) << 8) | (databuf_in[(x * packets_size) + 14] & 0xff));
-	*/
+	short program_num;
+	short program_map_pid;
+	
 	if (pid_vector[PID].exist == false)
 	{
 		pid_vector[PID].exist = true;
@@ -442,29 +534,42 @@ void	PAT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 		pid_vector[PID].type = "PSI";
 		pid_vector[PID].description = "PAT";
 	}
-	// PMT PID / Program Map PID, begin at byte 15-16
-	while (15 + (repetition * pat_repetition_size) < section_length + 6) // 6 = byte number of section length begining 
+	/*if (packet.is_process_mandatory == true)
 	{
-		short program_map_pid = (((*databuf_in)[(x * packets_size) + 15 + (repetition * pat_repetition_size)] & 0x1f) << 8) | 
-			((*databuf_in)[(x * packets_size) + 16] & 0xff);
-		
-		if (pid_vector[program_map_pid].exist == false)
-		{
-			pid_vector[program_map_pid].exist = true;
-			pid_vector[program_map_pid].pid = program_map_pid;
-			pid_vector[program_map_pid].type = "PSI";
-			pid_vector[program_map_pid].description = "PMT";
-		}
+		std::cout << "section length " << section_length << std::endl;
+		std::cout << "program num " << program_num << std::endl;
+		for (int i = x * packets_size; i != ((x+1) * packets_size); i++)
+			std::cout << std::bitset<8>((*databuf_in)[i]) << " " ;
+		std::cout << std::endl;
+	}*/
+	// PMT PID / Program Map PID, at byte 15-16
+	while (15 + (repetition * pat_repetition_size) < section_length + 6) // 6 = byte number for "section length" start (between 6-7) 
+	{
+		program_num = ((((*databuf_in)[(x * packets_size) + 13 + (repetition * pat_repetition_size)] & 0xff) << 8) | ((*databuf_in)[(x * packets_size) + 14 + (repetition * pat_repetition_size)] & 0xff));
+		program_map_pid = (((*databuf_in)[(x * packets_size) + 15 + (repetition * pat_repetition_size)] & 0x1f) << 8) | 
+			((*databuf_in)[(x * packets_size) + 16 + (repetition * pat_repetition_size)] & 0xff);
+		if (program_num == 0)
+			pid_vector[program_map_pid].description = dvb_description[program_map_pid];
 		else
 		{
-			pid_vector[program_map_pid].type = "PSI";
-			pid_vector[program_map_pid].description = "PMT";
+			if (pid_vector[program_map_pid].exist == false)
+			{
+				pid_vector[program_map_pid].exist = true;
+				pid_vector[program_map_pid].pid = program_map_pid;
+				pid_vector[program_map_pid].type = "PSI";
+				pid_vector[program_map_pid].description = "PMT";
+			}
+			else
+			{
+				pid_vector[program_map_pid].type = "PSI";
+				pid_vector[program_map_pid].description = "PMT";
+			}
 		}
 		++repetition;
 	}
 }
 
-int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, boost::posix_time::ptime &last_time_pcr)
+int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, boost::posix_time::ptime &last_time_pcr, std::vector<Pid> &pid_vector, Packet_info &packet)
 {
 	std::list<Pid>::iterator pid_it;
 	int packets_size;
@@ -472,11 +577,11 @@ int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, b
 		return (1);
 	int packets_per_read = datalen_out / packets_size;
 		
-	packets_read = packets_read + packets_per_read;
-	octets_read = octets_read + datalen_out;
+	packet.packets_read = packet.packets_read + packets_per_read;
+	packet.octets_read = packet.octets_read + datalen_out;
 		
 		
-	// découpage packets lu par chaque read, creation list de pid et un vector permetant de compter packet par pid		
+	// découpage packets lu par chaque read, creation list de pid et un vector permetant de compter packet par pid	
 	for (int x = 0; x != packets_per_read; x++)
 	{
 		if ((*databuf_in)[(x * packets_size)] == 'G') // mpeg ts packet begins with octet 0 = G
@@ -487,16 +592,22 @@ int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, b
 			
 			PID = (((*databuf_in)[(x * packets_size) + 1] << 8) | (*databuf_in)[(x * packets_size) + 2]) & 0x1fff;
 			// octet 6-7 section length, "These bytes must not exceed a value of 1021"
-			short section_length;
-			if ((section_length= (((*databuf_in)[(x * packets_size) + 6] & 0x7) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff)) > 1021)
+			short section_length;// = (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff);
+			if ((section_length= (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff)) > 1021);
+			/*{
+				if (packet.is_process_mandatory == true)
+				{
+						std::cout << std::bitset<8>((*databuf_in)[(x * packets_size) + 6] & 0x3) << " *** " << std::bitset<8>((*databuf_in)[(x * packets_size) + 7] & 0xff) << std::endl;
+						std::cout << std::bitset<16>(section_length) << std::endl;
+				}
 				section_length = 0;
-			
+			}*/
 			// null packet
 			if (PID == 8191 && pid_vector[PID].exist == false)
 			{
 				pid_vector[PID].pid = PID;
 				pid_vector[PID].type = "NUL";
-				pid_vector[PID].description = "Nul pascket";
+				pid_vector[PID].description = "Nul packet";
 				pid_vector[PID].exist = true;
 			}
 			// DVB
@@ -504,14 +615,14 @@ int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, b
 				{
 					type = "DVB";
 					//check table id
-					if ((*databuf_in)[(x * packets_size) + 5] == 66 || (*databuf_in)[(x * packets_size) + 5] == 70)
-						description = "SDT";
+					//if ((*databuf_in)[(x * packets_size) + 5] == 66 || (*databuf_in)[(x * packets_size) + 5] == 70)
+					description = dvb_description[PID];
 					if (pid_vector[PID].exist == false)
 					{
 						pid_vector[PID].pid = PID;
 						pid_vector[PID].type = type;
-						pid_vector[PID].description = description;
 						pid_vector[PID].exist = true;
+						pid_vector[PID].description = description;
 					}
 					else
 					{
@@ -520,15 +631,21 @@ int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, b
 					}
 				}
 			//PSI
+			if (packet.is_process_mandatory == true && PID == 16)
+				std::cout << "PID : " << PID <<  " description : " << pid_vector[PID].description <<std::endl;
 			else if (PID == 0) // PAT
-				PAT_analysis(databuf_in, x, packets_size, section_length, PID);
+				PAT_analysis(databuf_in, x, packets_size, section_length, PID, pid_vector, packet);
 			// PMT
-			else if (pid_vector[PID].exist == true &&  pid_vector[PID].description == "PMT")		
-				PMT_analysis(databuf_in, x, packets_size, section_length);
+			else if (pid_vector[PID].exist == true && pid_vector[PID].description == "PMT")
+				PMT_analysis(databuf_in, x, packets_size, section_length, pid_vector, packet);
 			// PES
-			else if (pid_vector[PID].exist == true && pid_vector[PID].type == "PES")
-				PES_analysis(packets_size, x, databuf_in, PID);
-
+			/*else if (pid_vector[PID].exist == true && pid_vector[PID].type == "PES")
+				PES_analysis(packets_size, x, databuf_in, PID, pid_vector, packet);*/
+			/*else
+			{
+				if (packet.is_process_mandatory == true)
+					std::cout << " else PID: " << PID << std::endl;
+			}*/
 			pid_vector[PID].pkts_per_pids = pid_vector[PID].pkts_per_pids + 1;
 			
 			int continuity = (*databuf_in)[(x * packets_size) + 3] & 0x0F;
@@ -572,6 +689,18 @@ int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, b
 						
 						}
 					}
+					
+					// Check if its a packet with PCR field For interval calculation between 2 packets with pcr field
+					if (pid_vector[PID].contain_pcr == true && (*databuf_in)[(x * packets_size) + 5] & (1u << 4)) // Checking if PCR flag = 1
+					{
+						boost::posix_time::ptime actual_time_pcr = boost::posix_time::microsec_clock::local_time();
+						boost::posix_time::time_duration diff = actual_time_pcr - last_time_pcr;
+						if (diff.total_milliseconds() > packet.max_interval_value_between_pcr)
+							packet.max_interval_value_between_pcr = diff.total_milliseconds();
+						last_time_pcr = actual_time_pcr;
+					}
+					//if ((*databuf_in)[(x * packets_size) + 4] > 0 /*&&((*databuf_in)[(x * packets_size) + 5] & (1u << 6))*/)
+						//std::cout << std::bitset<8>((*databuf_in)[(x * packets_size) + 4]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + 5]) << std::endl;
 				}
 				else // **0* **** Adaptation Field Control = 01 or 00				
 				{
@@ -588,58 +717,40 @@ int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, b
 					{
 						if (((*databuf_in)[(x * packets_size) + 5] & (1u << 7))) // **00 1*** Adaptation Field Control = 00 and Discontinuity Indicator = 1
 						{
-							++counter001;
+							
 						}
 						else // **00 0*** Adaptation Field Control = 00 and Discontinuity Indicator = 0
 						{
-							++counter000;
+							
 						}
 					}
 				}
 			}
 			pid_vector[PID].last_continuity_counter_per_pid = continuity;
-		
-			// Check if its a packet with PCR field For interval calculation between 2 packets with pcr field
-			if (pid_vector[PID].contain_pcr == true && (*databuf_in)[(x * packets_size) + 5] & (1u << 4)) // Checking if PCR flag = 1
-			{
-				boost::posix_time::ptime actual_time_pcr = boost::posix_time::microsec_clock::local_time();
-				boost::posix_time::time_duration diff = actual_time_pcr - last_time_pcr;
-				if (diff.total_milliseconds() > max_interval_value_between_pcr)
-					max_interval_value_between_pcr = diff.total_milliseconds();
-				last_time_pcr = actual_time_pcr;
-			}
 		}
 	}
 	return (0);
 }
 
-int	main(int argc, char **argv)
+int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &ingroup, int &inport, std::string &inip, std::string &outgroup, int &outport,
+				std::string &outip, int &ttl, std::string &dest_info_file, int &interval)
 {
 	struct 					in_addr localInterface;
     struct 					sockaddr_in groupSock;
-    int 					sd_out;
     char 					databuf_out[16384] = "Multicast test message lol!";
     int 					datalen_out;// = sizeof(databuf_out);
 	struct 					sockaddr_in localSock;
     struct 					ip_mreq group;
-    int 					sd_in;
     int 					datalen_in;
     char 					databuf_in[16384];
 	
-	static std::string		s_outgroup; 
-    static int				s_outport;
-    static std::string 		s_outip;
-	int 					interval;
 	struct sockaddr_storage my_addr;
     struct addrinfo 		*res0 = 0;
     int 					addr_len;
 	
-	int ttl = 0;
+	packet.atomic_dest_info_file.store((char*)dest_info_file.c_str(), std::memory_order_relaxed);
 	
-	if (init(argc, argv, s_ingroup, s_inport, s_inip, s_outgroup, s_outport, s_outip, ttl, interval) == 1)
-		return (1);
-	
-	res0 = udp_resolve_host( 0, s_outport, SOCK_DGRAM, AF_INET, AI_PASSIVE );
+	res0 = udp_resolve_host( 0, outport, SOCK_DGRAM, AF_INET, AI_PASSIVE );
      if( res0 == 0 ) {
 		 std::cerr << "udp_resolve_host failed" << std::endl;
 		return(1);
@@ -650,8 +761,8 @@ int	main(int argc, char **argv)
 
 
     /* Create a datagram socket on which to send. */
-    sd_out = socket(AF_INET, SOCK_DGRAM, 0);
-    if(sd_out < 0) {
+    packet.sd_out = socket(AF_INET, SOCK_DGRAM, 0);
+    if(packet.sd_out < 0) {
       std::cerr << "Opening datagram socket error" << std::endl;
       return(1);
     } else {
@@ -662,19 +773,19 @@ int	main(int argc, char **argv)
     /* group address of 225.1.1.1 and port 5555. */
     memset((char *) &groupSock, 0, sizeof(groupSock));
     groupSock.sin_family = AF_INET;
-    groupSock.sin_addr.s_addr = inet_addr(s_outgroup.c_str());
-    groupSock.sin_port = htons(s_outport);
+    groupSock.sin_addr.s_addr = inet_addr(outgroup.c_str());
+    groupSock.sin_port = htons(outport);
 
     {
       int reuse = 1;
-      if(setsockopt(sd_out, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
-       std::cerr << "Setting SO_REUSEADDR error on sd_out" << std::endl;
-       close(sd_out);
+      if(setsockopt(packet.sd_out, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
+       std::cerr << "Setting SO_REUSEADDR error on packet.sd_out" << std::endl;
+       close(packet.sd_out);
        return(1);
       } 
     }
   /* bind  */
-  if( bind( sd_out, (struct sockaddr *)&my_addr, addr_len ) < 0 ) {
+  if( bind( packet.sd_out.load(), (struct sockaddr *)&my_addr, addr_len ) < 0 ) {
       std::cerr << "Error binding out socket" << std::endl;
       return(1);
   }
@@ -699,15 +810,15 @@ int	main(int argc, char **argv)
     /* The IP address specified must be associated with a local, */
     /* multicast capable interface. */
 
-    localInterface.s_addr = inet_addr(s_outip.c_str());
-    if(setsockopt(sd_out, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) < 0) {
+    localInterface.s_addr = inet_addr(outip.c_str());
+    if(setsockopt(packet.sd_out, IPPROTO_IP, IP_MULTICAST_IF, (char *)&localInterface, sizeof(localInterface)) < 0) {
       std::cerr << "Setting local out interface error" << std::endl;
       return(1);
     } else {
       std::cout << "Setting the local out interface...OK\n" << std::endl;
     }
     
-    if( setsockopt( sd_out, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl) ) < 0 ) {   
+    if( setsockopt( packet.sd_out, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl) ) < 0 ) {   
       std::cerr << "Setting ttl" << std::endl;
       return(1);
     }
@@ -732,9 +843,9 @@ int	main(int argc, char **argv)
 
     /* Create a datagram socket on which to receive. */
 
-    sd_in = socket(AF_INET, SOCK_DGRAM, 0);
+	packet.sd_in = socket(AF_INET, SOCK_DGRAM, 0);
 
-    if(sd_in < 0) {
+    if(packet.sd_in < 0) {
       std::cerr << "Opening datagram socket error" << std::endl;
       return(1);
     } else {
@@ -743,9 +854,9 @@ int	main(int argc, char **argv)
       /* application to receive copies of the multicast datagrams. */
       {
       int reuse = 1;
-      if(setsockopt(sd_in, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
+      if(setsockopt(packet.sd_in, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
        std::cerr << "Setting SO_REUSEADDR error" << std::endl;
-       close(sd_in);
+       close(packet.sd_in);
        return(1);
       } else {
        std::cout << "Setting SO_REUSEADDR...OK." << std::endl;
@@ -757,12 +868,12 @@ int	main(int argc, char **argv)
     /* specified as INADDR_ANY. */
     memset((char *) &localSock, 0, sizeof(localSock));
     localSock.sin_family = AF_INET;
-    localSock.sin_port = htons(s_inport);
+    localSock.sin_port = htons(inport);
     //localSock.sin_addr.s_addr = INADDR_ANY; Dangereux! Pas de filtrage!
-    localSock.sin_addr.s_addr = inet_addr(s_ingroup.c_str());
-    if(bind(sd_in, (struct sockaddr*)&localSock, sizeof(localSock))) {
+    localSock.sin_addr.s_addr = inet_addr(ingroup.c_str());
+    if(bind(packet.sd_in.load(), (struct sockaddr*)&localSock, sizeof(localSock))) {
       std::cerr << "Binding datagram socket in error" << std::endl;
-      close(sd_in);
+      close(packet.sd_in);
       return(1);
     } else {
       std::cout << "Binding datagram socket in...OK." << std::endl;
@@ -773,11 +884,11 @@ int	main(int argc, char **argv)
     /* interface. Note that this IP_ADD_MEMBERSHIP option must be */
     /* called for each local interface over which the multicast */
     /* datagrams are to be received. */
-    group.imr_multiaddr.s_addr = inet_addr(s_ingroup.c_str());
-    group.imr_interface.s_addr = inet_addr(s_inip.c_str());
-    if(setsockopt(sd_in, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&group, sizeof(group)) < 0) {
+    group.imr_multiaddr.s_addr = inet_addr(ingroup.c_str());
+    group.imr_interface.s_addr = inet_addr(inip.c_str());
+    if(setsockopt(packet.sd_in, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&group, sizeof(group)) < 0) {
       std::cerr << "Adding multicast group in error" << std::endl;
-      close(sd_in);
+      close(packet.sd_in);
       return(1);
     } else {
       std::cout << "Adding multicast group in...OK." << std::endl;
@@ -786,35 +897,37 @@ int	main(int argc, char **argv)
     /* Read from the socket. */
     datalen_in = sizeof(databuf_in);
 	
-	std::thread t(print, interval);
+	std::thread t(print, std::ref(inip), std::ref(inport), std::ref(interval), std::ref(pid_vector), std::ref(packet));
 	
 	//First time getter
 	boost::posix_time::ptime last_time = boost::posix_time::microsec_clock::local_time();
 	boost::posix_time::ptime last_time_pcr = last_time;
 	
-    while(1) {
-      datalen_out = read(sd_in, databuf_in, datalen_in);
+	signal(SIGUSR1, callback_signal_handler);
+    
+	while(1) {
+      datalen_out = read(packet.sd_in, databuf_in, datalen_in);
 		// Calcule en milliseconds de l'intervale de reception de chaque packets
 		boost::posix_time::ptime actual_time  = boost::posix_time::microsec_clock::local_time();
 		boost::posix_time::time_duration diff = actual_time - last_time;
-		if (diff.total_milliseconds() > max_interval_value_between_packets)
-			max_interval_value_between_packets = diff.total_milliseconds();
+		if (diff.total_milliseconds() > packet.max_interval_value_between_packets)
+			packet.max_interval_value_between_packets = diff.total_milliseconds();
 		last_time = actual_time;
 	  
       if(datalen_out < 0) {
         std::cerr << "Reading datagram im message error" << std::endl;
-        close(sd_in);
-        close(sd_out);
+        close(packet.sd_in);
+        close(packet.sd_out);
         return(1);
       } else {
         //printf("Reading datagram message in ...OK.\n");
 		//std::cout << " **r: " << databuf_in << "  " <<strlen(databuf_in) << "**";
     //    printf("The message from multicast server in is: \"%s\"\n", databuf_in);
       }
-	  
-      if(sendto(sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0) {
-         std::cerr << "Sending datagram message out error" << std::endl;
-      } else {
+	  if (packet_monitoring(&databuf_in, datalen_out, last_time_pcr, pid_vector, packet) == 0)
+		if (packet.is_process_mandatory == true)
+			if(sendto(packet.sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
+				std::cerr << "Sending datagram message out error" << std::endl;
         //printf("Sending datagram message out...OK\n");
 		//std::cout << " w ";
 		/*for (int i = 0; i != strlen(databuf_in); i++)
@@ -823,8 +936,97 @@ int	main(int argc, char **argv)
 		/*int len = strlen(databuf_in);
 		if (len > 3)
 		{*/
-		packet_monitoring(&databuf_in, datalen_out, last_time_pcr);
       }
-    }
+	return (0);
+}
+
+int	main(int argc, char **argv)
+{
+	std::string 		ingroup_main;
+	int  				inport_main;
+	std::string 		inip_main;
+	std::string			outgroup_main; 
+    int					outport_main;
+    std::string 		outip_main;
+	int 				ttl_main = 0;
+	std::string			dest_info_file_main;	
+	int					interval_main;
+	
+	std::string 		ingroup_second;
+	int  				inport_second;
+	std::string 		inip_second;
+	std::string			outgroup_second; 
+    int					outport_second;
+    std::string 		outip_second;
+	int 				ttl_second = 0;
+	std::string			dest_info_file_second;
+	int					interval_second;
+	
+	std::vector<Pid>	pid_vector_main(NBR_PID_MAX); // pid 0 to 8191 = vector of size 8192
+	Packet_info			packet_main;
+	std::vector<Pid>	pid_vector_second(NBR_PID_MAX); // pid 0 to 8191 = vector of size 8192
+	Packet_info			packet_second;
+	
+	packet_main.is_process_mandatory.store(true, std::memory_order_relaxed);
+	packet_second.is_process_mandatory.store(false, std::memory_order_relaxed);
+	
+	sigset_t signal_set;
+	sigemptyset(&signal_set);
+	sigaddset(&signal_set, SIGUSR1);
+	sigprocmask(SIG_BLOCK, &signal_set, NULL); // block l'ecoute SIGUSR1 pour le main thread, pour qu'ensuite les process fils n'ecoute pas USR1 non plus
+	if (init(argc, argv, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main,
+						ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second,
+						dest_info_file_main, dest_info_file_second, interval_main, interval_second) == 1)
+		return (1);
+	
+	std::thread primary(flux_start, std::ref(pid_vector_main), std::ref(packet_main), std::ref(ingroup_main), std::ref(inport_main), std::ref(inip_main), std::ref(outgroup_main), std::ref(outport_main), std::ref(outip_main), std::ref(ttl_main), std::ref(dest_info_file_main), std::ref(interval_main));
+	std::thread secondary(flux_start, std::ref(pid_vector_second), std::ref(packet_second), std::ref(ingroup_second), std::ref(inport_second), std::ref(inip_second), std::ref(outgroup_second), std::ref(outport_second), std::ref(outip_second), std::ref(ttl_second), std::ref(dest_info_file_second), std::ref(interval_second));
+	
+	sigprocmask(SIG_UNBLOCK, &signal_set, NULL); // laisse main thread ecouter SIGUSR1
+	
+	fd_set	fd_input;
+	struct timeval	tv;
+	int 			retval;
+
+	while (packet_main.sd_in == 0 || packet_second.sd_in == 0); // wait init
+	
+	int fd_main = packet_main.sd_in;
+	tv.tv_usec = 0;
+	while(1)
+	{			
+		tv.tv_sec = 5;
+		FD_ZERO(&fd_input);
+		FD_SET(fd_main, &fd_input);
+		
+		retval = select(fd_main + 1, &fd_input, NULL, NULL, &tv);
+		/*if (FD_ISSET(fd_main, &fd_input)) // changement d'état détecter
+		{*/
+		if (ask_force_switch == true)
+		{
+			packet_main.is_process_mandatory = !packet_main.is_process_mandatory;
+			packet_second.is_process_mandatory = !packet_second.is_process_mandatory;
+			if (fd_main == packet_main.sd_in)
+				fd_main = packet_second.sd_in;
+			else
+				fd_main = packet_main.sd_in;
+			ask_force_switch = false;
+		}
+			//std::cout << "Changement d'état détecter " << retval <<  std::endl;
+			//exit(0);
+		//}
+		if (retval == 0) // select time out
+		{
+			std::cout << "Aucun changement d'état détecter depuis 5 sec " << retval <<std::endl;
+			ask_for_find_the_gop = true;
+			packet_main.is_process_mandatory = !packet_main.is_process_mandatory;
+			packet_second.is_process_mandatory = !packet_second.is_process_mandatory;
+			if (fd_main == packet_main.sd_in)
+				fd_main = packet_second.sd_in;
+			else
+				fd_main = packet_main.sd_in;
+		}
+	}
+	primary.join();
+	secondary.join();
 	return (0);
 }
