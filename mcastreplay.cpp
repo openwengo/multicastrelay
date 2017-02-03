@@ -70,6 +70,24 @@ const static std::vector<std::string> Description =
 std::atomic<bool>	ask_for_find_the_gop(false);
 std::atomic<bool>	ask_force_switch(false);
 
+template<std::size_t N>
+bool operator<(const std::bitset<N>& x, const std::bitset<N>& y)
+{
+    for (int i = N-1; i >= 0; i--) {
+        if (x[i] ^ y[i]) return y[i];
+    }
+    return false;
+}
+
+template<std::size_t N>
+bool operator>(const std::bitset<N>& y, const std::bitset<N>& x)
+{
+    for (int i = N-1; i >= 0; i--) {
+        if (x[i] ^ y[i]) return y[i];
+    }
+    return false;
+}
+
 void	callback_signal_handler(int sign)
 {
 	
@@ -397,13 +415,17 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 					//std::cout << "PES header length " << header_pes_len << std::endl;
 					s_video_packet_nbr = 0;
 					s_audio_packet_nbr = 0;
-					std::string stream_id = std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]).to_string<char,std::string::traits_type,std::string::allocator_type>();
-					if (stream_id >= "11000000" && stream_id <= "11011111")
+					std::bitset<8> stream_id((*databuf_in)[(x * packets_size) + pos + 3]);
+					std::bitset<8> start_interval_audio(191); // real start 192
+					std::bitset<8> end_interval_audio(224); // real end 223
+					std::bitset<8> start_interval_video(223); // real start 224
+					std::bitset<8> end_interval_video(240); // real start 239
+					if (stream_id > start_interval_audio && stream_id < end_interval_audio)
 					{
 						pid_vector[PID].description = 0;
 						++s_audio_packet_nbr;
 					}
-					else if (stream_id >= "11100000" && stream_id <= "11101111")
+					else if (stream_id > start_interval_video && stream_id < end_interval_video)
 					{
 						pid_vector[PID].description = 1;
 						++s_video_packet_nbr;
@@ -416,7 +438,7 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 								{	
 									pes_length = (((*databuf_in)[(x * packets_size) + pos + 4] << 8) | ((*databuf_in)[(x * packets_size) + pos + 5] & 0xff));
 									header_pes_len = (*databuf_in)[(x * packets_size) + pos + 8]& 0xff;
-									if ((stream_id = std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]).to_string<char,std::string::traits_type,std::string::allocator_type>()) == "10111000"// 0xb8
+									if ((std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184))// 0xb8
 										|| ((*databuf_in)[(x * packets_size) + pos + 5] & 0x38) /*to keep bit 3 4 and 5 to examine it*/ == 0x8) //001
 									{
 										ask_for_find_the_gop = false;
@@ -433,7 +455,6 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 										<< " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4])
 										<< " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 5]) << " pes_length: " << pes_length << " header_pes_len: " << header_pes_len ;
 										std::cout << std::endl << std::endl;
-										std::cout << "stream_id : " << stream_id << std::endl;
 										
 										std::string From_I_Image;
 										//char *From_I_Image = (char*)malloc(sizeof(char) * (packet.datalen_out - (x * packets_size)));//std::string((*databuf_in) + (x * packets_size));
