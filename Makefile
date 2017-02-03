@@ -34,4 +34,7 @@ clean:
 
 re: clean all
 
+gprof: $(OBJS)
+		$(CXX) $(CPPFLAGS) -pg -o $(NAME) $(OBJS) $(LDLIBS)
+
 .PHONY: all clean re
