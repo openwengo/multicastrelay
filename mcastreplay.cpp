@@ -32,12 +32,40 @@
 #define DEFAULT_SLEEP_DURATION 60
 #define NBR_PID_MAX 8192
 
-static std::map<int, std::string>	dvb_description = { 
-															{16,"NIT"}, {17,"SDT"}, {18,"EIT"}, {19,"RST"}, {20,"TDT"}, {21,"network synchronization"},
-															{22,"RNT"}, {23,"reserved for future use"}, {24,"reserved for future use"},
-															{25,"reserved for future use"}, {26,"reserved for future use"}, {27,"reserved for future use"},
-															{28,"inband signalling"}, {29,"measurement"}, {30,"DIT"}, {31,"SIT"}
-															};
+static std::map<unsigned short, unsigned short>	dvb_description = { 
+	{16,5}, {17,6}, {18,7}, {19,8}, {20,9}, {21,10},
+	{22,11}, {23,12}, {24,12},
+	{25,12}, {26,12}, {27,12},
+	{28,13}, {29,14}, {30,15}, {31,16}
+};
+
+static std::map<unsigned short, std::string>	stream_type_possibility = {
+	{0,"Reserved"}, {1,"ISO/IEC 11172-2 (MPEG-1 video) in a packetized stream"}, {2,"ITU-T Rec. H.262 and ISO/IEC 13818-2 (MPEG-2 higher rate interlaced video) in a packetized stream"},
+	{3,"ISO/IEC 11172-3 (MPEG-1 audio) in a packetized stream"},{4,"ISO/IEC 13818-3 (MPEG-2 halved sample rate audio) in a packetized stream"},
+	{5,"ITU-T Rec. H.222 and ISO/IEC 13818-1 (MPEG-2 tabled data) privately defined"},{6,"ITU-T Rec. H.222 and ISO/IEC 13818-1 (MPEG-2 packetized data) privately defined (i.e., DVB subtitles/VBI and AC-3)"},
+	{7,"ISO/IEC 13522 (MHEG) in a packetized stream"},{8,"ITU-T Rec. H.222 and ISO/IEC 13818-1 DSM CC in a packetized stream"},
+	{9,"ITU-T Rec. H.222 and ISO/IEC 13818-1/11172-1 auxiliary data in a packetized stream"},
+	{10,"ISO/IEC 13818-6 DSM CC multiprotocol encapsulation"},{11,"ISO/IEC 13818-6 DSM CC U-N messages"},{12,"ISO/IEC 13818-6 DSM CC stream descriptors"},
+	{13,"ISO/IEC 13818-6 DSM CC tabled data"},{14,"ISO/IEC 13818-1 auxiliary data in a packetized stream"},
+	{15,"ISO/IEC 13818-7 ADTS AAC (MPEG-2 lower bit-rate audio) in a packetized stream"},
+	{16,"ISO/IEC 14496-2 (MPEG-4 H.263 based video) in a packetized stream"},
+	{17,"ISO/IEC 14496-3 (MPEG-4 LOAS multi-format framed audio) in a packetized stream"},{18,"ISO/IEC 14496-1 (MPEG-4 FlexMux) in a packetized stream"},
+	{19,"ISO/IEC 14496-1 (MPEG-4 FlexMux) in ISO/IEC 14496 tables"},{20,"ISO/IEC 13818-6 DSM CC synchronized download protocol"},
+	{21,"Packetized metadata"},{22,"Sectioned metadata"},{23,"ISO/IEC 13818-6 DSM CC Data Carousel metadata"},
+	{24,"ISO/IEC 13818-6 DSM CC Object Carousel metadata"},{25,"ISO/IEC 13818-6 Synchronized Download Protocol metadata"},{26,"ISO/IEC 13818-11 IPMP"},
+	{27,"ITU-T Rec. H.264 and ISO/IEC 14496-10 (lower bit-rate video) in a packetized stream"}
+};
+
+const static std::vector<std::string> Type = 
+{
+	"PSI", "DVB", "PES", "NUL"
+};
+
+const static std::vector<std::string> Description = 
+{
+	"Audio", "Video", "PAT", "PMT", "Null Packet", /*5*/"NIT", "SDT", "EIT", "RST", "TDT", "network synchronization", "RNT", "reserved for future use", "inband signalling",
+	"measurement", "DIT", "SIT"
+};
 
 std::atomic<bool>	ask_for_find_the_gop(false);
 std::atomic<bool>	ask_force_switch(false);
@@ -131,8 +159,11 @@ void	print(const std::string &inip, const int &inport, const int &interval, std:
 							std::cerr << "Opening " << string_stream.str() << " failed" << std::endl;
 						string_stream.str(std::string());
 						std::cout << "PID: " << pid_vector[cursor].pid << " = " << pid_vector[cursor].continuity_error_per_pid << " continuity errors" << std::endl
-						<< "type : " << pid_vector[cursor].type << " description : " << pid_vector[cursor].description << std::endl << std::endl;
+						<< "type : " << Type[pid_vector[cursor].type] << " description : " << Description[pid_vector[cursor].description] << std::endl;
 						fd << pid_vector[cursor].continuity_error_per_pid << std::endl;
+						if (pid_vector[cursor].stream_type > -1)
+							std::cout << "stream type : " << stream_type_possibility[pid_vector[cursor].stream_type] << std::endl;
+						std::cout << std::endl;
 						fd.flush();
 						fd.close();
 					}
@@ -344,7 +375,7 @@ int	packet_size_guessing(const char (*databuf_in)[16384])
 }
 
 // 00000000 00000000 00000001 (1110**** for video or 110***** for audio) = PES start code
-int	PES_analysis(const int &packets_size, const int &x, const char (*databuf_in)[16384], const short &PID, std::vector<Pid>	&pid_vector, Packet_info &packet)
+int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], const short &PID, std::vector<Pid>	&pid_vector, Packet_info &packet)
 {
 	
 	// IN test, arrange this function when finished
@@ -362,58 +393,104 @@ int	PES_analysis(const int &packets_size, const int &x, const char (*databuf_in)
 					//std::cout << "PID: " << PID << " stream id " << std::bitset<8>(databuf_in[(x * packets_size) + pos + 3]) << std::endl;
 					short pes_length = (((*databuf_in)[(x * packets_size) + pos + 4] << 8) | ((*databuf_in)[(x * packets_size) + pos + 5] & 0xff));
 					//std::cout << "PES packet length " << pes_length << std::endl;
-					short header_pes_len = (*databuf_in)[(x * packets_size) + pos + 8];
+					short header_pes_len = (*databuf_in)[(x * packets_size) + pos + 8]& 0xff;
 					//std::cout << "PES header length " << header_pes_len << std::endl;
 					s_video_packet_nbr = 0;
 					s_audio_packet_nbr = 0;
 					std::string stream_id = std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]).to_string<char,std::string::traits_type,std::string::allocator_type>();
 					if (stream_id >= "11000000" && stream_id <= "11011111")
 					{
-						pid_vector[PID].description = "Audio";
-						++s_video_packet_nbr;
+						pid_vector[PID].description = 0;
+						++s_audio_packet_nbr;
 					}
 					else if (stream_id >= "11100000" && stream_id <= "11101111")
 					{
-						pid_vector[PID].description = "Video";
-						++s_audio_packet_nbr;
-					}
-					//pid.print_list();
-					if (packet.is_process_mandatory == false)
-					{
-						static int porte;
-						if (porte == 0)
-							std::cout << "not mandatory" << std::endl;
-						porte = 1;
-						//std::cout << "video_packet: " << s_video_packet_nbr << " pes_length: " << pes_length << std::endl;
-						if (ask_for_find_the_gop == true /*x == 0 &&*/ /*&& (*databuf_in)[(x * packets_size) + pos + 4] > 0 && ((*databuf_in)[(x * packets_size) + pos + 5] & (1u << 6))*/
-								/* && (*databuf_in)[(x * packets_size) + pos] == 0
-								&& (*databuf_in)[(x * packets_size) + pos + 1] == 0
-								&& (*databuf_in)[(x * packets_size) + pos + 2] == 1*/
-								//&& std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]).to_string<char,std::string::traits_type,std::string::allocator_type>() == "11100000"
-								&& (*databuf_in)[(x * packets_size) + pos + 3] == 0
-								/*&& ((*databuf_in)[(x * packets_size) + pos + 5] & (1u << 3))
-								&& ((*databuf_in)[(x * packets_size) + pos + 5] & (1u << 4)) == 0
-								&& ((*databuf_in)[(x * packets_size) + pos + 5] & (1u << 5)) == 0*/)
+						pid_vector[PID].description = 1;
+						++s_video_packet_nbr;
+						
+						if (packet.is_process_mandatory == false && ask_for_find_the_gop == true)
 						{
-							int i = 0 ;// x * packets_size;
-							//std::cout << "PID: " << PID << std::endl;
-							while (i != /*(x * packets_size) + */packets_size)
+							while (pos != packets_size)
 							{
-								std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
-								++i;
+								if ((*databuf_in)[(x * packets_size) + pos] == 0 && (*databuf_in)[(x * packets_size) + pos + 1] == 0 && (*databuf_in)[(x * packets_size) + pos + 2] == 1)
+								{	
+									pes_length = (((*databuf_in)[(x * packets_size) + pos + 4] << 8) | ((*databuf_in)[(x * packets_size) + pos + 5] & 0xff));
+									header_pes_len = (*databuf_in)[(x * packets_size) + pos + 8]& 0xff;
+									if ((stream_id = std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]).to_string<char,std::string::traits_type,std::string::allocator_type>()) == "10111000"// 0xb8
+										|| ((*databuf_in)[(x * packets_size) + pos + 5] & 0x38) /*to keep bit 3 4 and 5 to examine it*/ == 0x8) //001
+									{
+										ask_for_find_the_gop = false;
+										ask_force_switch = true;
+										int i =  x * packets_size;
+										//std::cout << "PID: " << PID << std::endl;
+										while (i != (x * packets_size) + packets_size)
+										{
+											std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
+											++i;
+										}
+										std::cout << std::endl;
+										std::cout << "x: " << x << " pos: " << pos << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 1]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 2])
+										<< " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4])
+										<< " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 5]) << " pes_length: " << pes_length << " header_pes_len: " << header_pes_len ;
+										std::cout << std::endl << std::endl;
+										std::cout << "stream_id : " << stream_id << std::endl;
+										
+										std::string From_I_Image;
+										//char *From_I_Image = (char*)malloc(sizeof(char) * (packet.datalen_out - (x * packets_size)));//std::string((*databuf_in) + (x * packets_size));
+										//strncpy(From_I_Image, (*databuf_in) + (x * packets_size), (packet.datalen_out - (x * packets_size)));
+										
+										std::cout << "FROM_I_IMAGE" << std::endl;
+										i =  x * packets_size;
+										int index = 0;
+										//std::cout << "PID: " << PID << std::endl;
+										while (i != packet.packets_per_read * packets_size)
+										{	
+											From_I_Image.append(1,(*databuf_in)[i]);
+											std::cout << std::bitset<8>(From_I_Image[index]) << " ";
+											//std::cout << std::bitset<8>(From_I_Image[i]) << " ";
+											++i;
+											++index;
+										}
+										std::cout << std::endl << std::endl << "size " << From_I_Image.size();
+										
+										packet.packets_per_read = packet.packets_per_read - x;
+										
+										std::cout << std::endl;
+										x = 0;
+										
+										std::cout << "*** Start read packets with I IMAGE ***" << std::endl;
+										int len = From_I_Image.size();
+										for (i = 0; i != len; i++)
+										{
+											(*databuf_in)[i] = From_I_Image[i];
+											std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
+										}
+										std::cout << std::endl << "*** End read packets with I IMAGE ***" << std::endl;
+									};
+								}
+								++pos;
 							}
-							std::cout << "x: " << x << " pos: " << pos << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 1]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 2])
-							<< " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4])
-							<< " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 5]);
-							std::cout << std::endl << std::endl;
-							/*ask_for_find_the_gop = false;
-							ask_force_switch = true;*/
+							break;
 						}
+						
 					}
+					
+					/*if (packet.is_process_mandatory == false && pid_vector[PID].description == "Video")
+					{
+						int i = x * packets_size;
+						while (i != (x * packets_size) + packets_size)
+						{
+							std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
+							++i;
+						}
+						std::cout << std::endl << "pos :" << pos << " x : " << x << " pes_length : " << pes_length << " header_pes_len : " << header_pes_len << std::endl;
+						std::cout << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 5]) << std::endl;
+						std::cout << std::bitset<16>(pes_length) << std::endl;
+						std::cout << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 8]) << std::endl << std::bitset<16>(header_pes_len) << std::endl;
+					}*/
 					//break;
 				}
 		}
-	
 	return (0);
 	/*int i = x * packets_size;
 	std::cout << "PID: " << PID << std::endl;
@@ -445,7 +522,7 @@ void	PMT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 	// skip this number of bytes (boucle_length) to get an other stream_type
 	boucle_length = 0;
 
-	if (packet.is_process_mandatory == true)
+	/*if (packet.is_process_mandatory == true)
 	{
 		int i = x * packets_size;
 		std::cout << i << " " << x * packets_size << std::endl; 
@@ -455,47 +532,33 @@ void	PMT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 			++i;
 		}
 		std::cout << std::endl;
-	}
+	}*/
 	
 	while (17 + boucle_length < section_length)
 	{
-		if (packet.is_process_mandatory == true)
-			std::cout << "premier while" << std::endl;
 		table_id_extension = ((*databuf_in)[(x * packets_size) + 8] << 8) | ((*databuf_in)[(x * packets_size) + 9] & 0xff);
 		// octet 17 = premier stream type boucle jusque fin de section
-		stream_type = (*databuf_in)[(x * packets_size) + 17 + boucle_length];
+		stream_type = (*databuf_in)[(x * packets_size) + 17 + boucle_length] & 0xff;
 		//octet 18-19 = premier elementary pid
 		elementary_pid = (((*databuf_in)[(x * packets_size) + 18 + boucle_length] & 0x1f) << 8) | ((*databuf_in)[(x * packets_size) + 19 + boucle_length] & 0xff);
 		//octet 20-21 = es_info_length_length 
 		// es_info_length_length give the number of bytes (right after bytes 20-21) that are used for Descriptor enum (Descriptor section in Wikipedia)
 		es_info_length_length = (((*databuf_in)[(x * packets_size) + 20 + boucle_length] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 21 + boucle_length] & 0xff);
 		// octet 22 = premier descriptor_tag
-		descriptor_tag = (*databuf_in)[(x * packets_size) + 22 + boucle_length];
+		descriptor_tag = (*databuf_in)[(x * packets_size) + 22 + boucle_length] & 0xff;
 		// octet 23 = premiere definition du nombre d'octet qui suive l'octet 23 pour la description du descriptor
-		descriptor_length = (*databuf_in)[(x * packets_size) + 23 + boucle_length] & 0xff;		
+		descriptor_length = (*databuf_in)[(x * packets_size) + 23 + boucle_length] & 0xff;
 		/*std::cout << "stream_type: " << stream_type << " elementary_pid: " << elementary_pid << " es_info_length_length: "
 		<< es_info_length_length << " boucle_length: " << boucle_length << std::endl;
 		*/
 		bool pcr = false;
-		if (packet.is_process_mandatory == true)
-			std::cout << "elementary pid: " << elementary_pid << std::endl;
 		if (pid_vector[elementary_pid].exist == false)
-		{
 			pid_vector[elementary_pid].exist = true;
-			if (pcr_pid == elementary_pid)
+		pid_vector[elementary_pid].pid = elementary_pid;
+		if (pcr_pid == elementary_pid && pid_vector[elementary_pid].contain_pcr == false)
 				pid_vector[elementary_pid].contain_pcr = true;
-			pid_vector[elementary_pid].pid = elementary_pid;
-			pid_vector[elementary_pid].type = "PES";
-			pid_vector[elementary_pid].description = "";
-			if (packet.is_process_mandatory == true)
-				std::cout << "elementary pid: " << elementary_pid << " " << pid_vector[elementary_pid].exist << " " << pid_vector[elementary_pid].type << std::endl;
-		}
-		else
-		{
-			if (pcr_pid == elementary_pid)
-				pid_vector[elementary_pid].contain_pcr = true;
-			pid_vector[elementary_pid].type = "PES";
-		}
+		pid_vector[elementary_pid].type = Pes;
+		pid_vector[elementary_pid].stream_type = stream_type;
 		es_counter = 2 + descriptor_length; // (2 = bytes used by descriptor_tag and descriptor_length) + bytes used for description of destructor_tag
 		
 		/*std::cout << "program number: " << table_id_extension << std::endl;
@@ -531,8 +594,8 @@ void	PAT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 	{
 		pid_vector[PID].exist = true;
 		pid_vector[PID].pid = PID;
-		pid_vector[PID].type = "PSI";
-		pid_vector[PID].description = "PAT";
+		pid_vector[PID].type = Psi;
+		pid_vector[PID].description = 2;
 	}
 	/*if (packet.is_process_mandatory == true)
 	{
@@ -556,33 +619,33 @@ void	PAT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 			{
 				pid_vector[program_map_pid].exist = true;
 				pid_vector[program_map_pid].pid = program_map_pid;
-				pid_vector[program_map_pid].type = "PSI";
-				pid_vector[program_map_pid].description = "PMT";
+				pid_vector[program_map_pid].type = Psi;
+				pid_vector[program_map_pid].description = 3;
 			}
 			else
 			{
-				pid_vector[program_map_pid].type = "PSI";
-				pid_vector[program_map_pid].description = "PMT";
+				pid_vector[program_map_pid].type = Psi;
+				pid_vector[program_map_pid].description = 3;
 			}
 		}
 		++repetition;
 	}
 }
 
-int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, boost::posix_time::ptime &last_time_pcr, std::vector<Pid> &pid_vector, Packet_info &packet)
+int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_time_pcr, std::vector<Pid> &pid_vector, Packet_info &packet)
 {
 	std::list<Pid>::iterator pid_it;
 	int packets_size;
 	if ((packets_size = packet_size_guessing(databuf_in)) == -1)
 		return (1);
-	int packets_per_read = datalen_out / packets_size;
+	packet.packets_per_read = packet.datalen_out / packets_size;
 		
-	packet.packets_read = packet.packets_read + packets_per_read;
-	packet.octets_read = packet.octets_read + datalen_out;
+	packet.packets_read = packet.packets_read + packet.packets_per_read;
+	packet.octets_read = packet.octets_read + packet.datalen_out;
 		
 		
 	// découpage packets lu par chaque read, creation list de pid et un vector permetant de compter packet par pid	
-	for (int x = 0; x != packets_per_read; x++)
+	for (int x = 0; x != packet.packets_per_read; x++)
 	{
 		if ((*databuf_in)[(x * packets_size)] == 'G') // mpeg ts packet begins with octet 0 = G
 		{
@@ -606,41 +669,39 @@ int	packet_monitoring(const char (*databuf_in)[16384], const int &datalen_out, b
 			if (PID == 8191 && pid_vector[PID].exist == false)
 			{
 				pid_vector[PID].pid = PID;
-				pid_vector[PID].type = "NUL";
-				pid_vector[PID].description = "Nul packet";
+				pid_vector[PID].type = Nul;
+				pid_vector[PID].description = 4;
 				pid_vector[PID].exist = true;
 			}
 			// DVB
 			else if (PID >= 16 && PID <= 31)
 				{
-					type = "DVB";
 					//check table id
 					//if ((*databuf_in)[(x * packets_size) + 5] == 66 || (*databuf_in)[(x * packets_size) + 5] == 70)
-					description = dvb_description[PID];
 					if (pid_vector[PID].exist == false)
 					{
 						pid_vector[PID].pid = PID;
-						pid_vector[PID].type = type;
+						pid_vector[PID].type = Dvb;
 						pid_vector[PID].exist = true;
-						pid_vector[PID].description = description;
+						pid_vector[PID].description = dvb_description[PID];
 					}
 					else
 					{
-						pid_vector[PID].type = type;
-						pid_vector[PID].description = description;
+						pid_vector[PID].type = Dvb;
+						pid_vector[PID].description = dvb_description[PID];
 					}
 				}
 			//PSI
 			if (packet.is_process_mandatory == true && PID == 16)
-				std::cout << "PID : " << PID <<  " description : " << pid_vector[PID].description <<std::endl;
+				std::cout << "PID : " << PID <<  " description : " << Description[pid_vector[PID].description] <<std::endl;
 			else if (PID == 0) // PAT
 				PAT_analysis(databuf_in, x, packets_size, section_length, PID, pid_vector, packet);
 			// PMT
-			else if (pid_vector[PID].exist == true && pid_vector[PID].description == "PMT")
+			else if (pid_vector[PID].exist == true && pid_vector[PID].description == 3)
 				PMT_analysis(databuf_in, x, packets_size, section_length, pid_vector, packet);
 			// PES
-			/*else if (pid_vector[PID].exist == true && pid_vector[PID].type == "PES")
-				PES_analysis(packets_size, x, databuf_in, PID, pid_vector, packet);*/
+			else if (pid_vector[PID].exist == true && pid_vector[PID].type == Pes)
+				PES_analysis(packets_size, x, databuf_in, PID, pid_vector, packet);
 			/*else
 			{
 				if (packet.is_process_mandatory == true)
@@ -738,7 +799,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 	struct 					in_addr localInterface;
     struct 					sockaddr_in groupSock;
     char 					databuf_out[16384] = "Multicast test message lol!";
-    int 					datalen_out;// = sizeof(databuf_out);
+    //int 					datalen_out;// = sizeof(databuf_out);
 	struct 					sockaddr_in localSock;
     struct 					ip_mreq group;
     int 					datalen_in;
@@ -906,7 +967,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 	signal(SIGUSR1, callback_signal_handler);
     
 	while(1) {
-      datalen_out = read(packet.sd_in, databuf_in, datalen_in);
+      packet.datalen_out = read(packet.sd_in, databuf_in, datalen_in);
 		// Calcule en milliseconds de l'intervale de reception de chaque packets
 		boost::posix_time::ptime actual_time  = boost::posix_time::microsec_clock::local_time();
 		boost::posix_time::time_duration diff = actual_time - last_time;
@@ -914,7 +975,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 			packet.max_interval_value_between_packets = diff.total_milliseconds();
 		last_time = actual_time;
 	  
-      if(datalen_out < 0) {
+      if(packet.datalen_out < 0) {
         std::cerr << "Reading datagram im message error" << std::endl;
         close(packet.sd_in);
         close(packet.sd_out);
@@ -924,9 +985,9 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 		//std::cout << " **r: " << databuf_in << "  " <<strlen(databuf_in) << "**";
     //    printf("The message from multicast server in is: \"%s\"\n", databuf_in);
       }
-	  if (packet_monitoring(&databuf_in, datalen_out, last_time_pcr, pid_vector, packet) == 0)
-		if (packet.is_process_mandatory == true)
-			if(sendto(packet.sd_out, databuf_in, datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
+	  if (packet_monitoring(&databuf_in, last_time_pcr, pid_vector, packet) == 0)
+		if ((packet.is_process_mandatory == true && ask_force_switch == false /*&& ask_for_find_the_gop == false*/ ) || (packet.is_process_mandatory == false && ask_force_switch == true))
+			if(sendto(packet.sd_out, databuf_in, packet.datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
 				std::cerr << "Sending datagram message out error" << std::endl;
         //printf("Sending datagram message out...OK\n");
 		//std::cout << " w ";
