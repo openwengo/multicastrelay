@@ -134,7 +134,7 @@ void	print(const std::string &inip, const int &inport, const int &interval, std:
 	std::ofstream									fd_interval_pcr;
 	std::ofstream									fd;
 	static unsigned long long int					saved_value;
-	unsigned long int								debit;
+	unsigned long double							debit;
 	std::stringstream 								string_stream;
 	
 	while(1)
@@ -192,7 +192,7 @@ void	print(const std::string &inip, const int &inport, const int &interval, std:
 				}
 			}
 			// Ecriture des Fichiers Octects.txt Packets.txt Debit.txt
-			debit = ((packet.octets_read - saved_value) * 8) / time_elapsed.total_seconds(); // get debit = bite per second
+			debit = (unsigned long double)((packet.octets_read - saved_value) * 8) / time_elapsed.total_seconds(); // get debit = bite per second
 			std::cout << "packet.packets_read: " << packet.packets_read << std::endl;
 			std::cout << "packet.octets_read: " << packet.octets_read << std::endl;
 			std::cout << "debit: " << debit << std::endl;
