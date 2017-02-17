@@ -134,7 +134,7 @@ void	print(const std::string &inip, const int &inport, const int &interval, std:
 	std::ofstream									fd_interval_pcr;
 	std::ofstream									fd;
 	static unsigned long long int					saved_value;
-	unsigned long double							debit;
+	int												debit;
 	std::stringstream 								string_stream;
 	
 	while(1)
@@ -192,7 +192,7 @@ void	print(const std::string &inip, const int &inport, const int &interval, std:
 				}
 			}
 			// Ecriture des Fichiers Octects.txt Packets.txt Debit.txt
-			debit = (unsigned long double)((packet.octets_read - saved_value) * 8) / time_elapsed.total_seconds(); // get debit = bite per second
+			debit = (int)((packet.octets_read - saved_value) * 8) / time_elapsed.total_seconds(); // get debit = bite per second
 			std::cout << "packet.packets_read: " << packet.packets_read << std::endl;
 			std::cout << "packet.octets_read: " << packet.octets_read << std::endl;
 			std::cout << "debit: " << debit << std::endl;
@@ -262,7 +262,8 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 									int &outport_main, std::string &outip_main, int &ttl_main,
 								 std::string &ingroup_second, int &inport_second, std::string &inip_second, std::string &outgroup_second, 
 									int &outport_second, std::string &outip_second, int &ttl_second,
-									std::string &dest_info_file_main, std::string &dest_info_file_second, int &interval_main, int &interval_second)
+									std::string &dest_info_file_main, std::string &dest_info_file_second, int &interval_main, int &interval_second,
+									int &main_switch_delay, int &backup_switch_delay)
 {
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
@@ -288,7 +289,9 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("OutSecond.Port", boost::program_options::value<int>(&outport_second)->default_value(0),							"Port Second Out")
 	("OutSecond.Ttl", boost::program_options::value<int>(&ttl_second)->default_value(0),								"Ttl Second Out")
 	("OutSecond.StatsPath", boost::program_options::value<std::string>(&dest_info_file_second)->default_value(""), 		"Second Stats Path")
-	("OutSecond.Interval", boost::program_options::value<int>(&interval_second)->default_value(DEFAULT_SLEEP_DURATION),	"Second Interval between each print out/file in seconds");
+	("OutSecond.Interval", boost::program_options::value<int>(&interval_second)->default_value(DEFAULT_SLEEP_DURATION),	"Second Interval between each print out/file in seconds")
+	("InMain.DelaySwitch", boost::program_options::value<int>(&main_switch_delay)->default_value(1),					"Delay for timeout switch, Normal to Backup")
+	("InSecond.DelaySwitch", boost::program_options::value<int>(&backup_switch_delay)->default_value(1),				"Delay for timeout switch, Backup to Normal");
 	
 	// Option from Command Line recuperation
 	boost::program_options::options_description description("Command Line Options");
@@ -314,6 +317,8 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("statspath_second", boost::program_options::value<std::string>(&dest_info_file_second),"Second Stats Path")
 	("interval_second", boost::program_options::value<int>(&interval_second), 				"Second Interval between each print out/file in seconds")
 	("config", boost::program_options::value<std::string>(&config_file), 					"Config File Name")
+	("main-switch-delay", boost::program_options::value<int>(&main_switch_delay),			"Delay for timeout switch, Normal to Backup")
+	("second-switch-delay", boost::program_options::value<int>(&backup_switch_delay),		"Delay for timeout switch, Backup to Normal")
 	("help", "Help Screen");
 	
 	try
@@ -401,6 +406,10 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 	static unsigned int s_video_packet_nbr;
 	static unsigned int s_audio_packet_nbr;
 	int					pos;
+	std::bitset<8> start_interval_audio(191); // real start 192
+	std::bitset<8> end_interval_audio(224); // real end 223
+	std::bitset<8> start_interval_video(223); // real start 224
+	std::bitset<8> end_interval_video(240); // real start 239
 	
 	for (pos = 0; pos != packets_size; pos++)
 		{
@@ -416,10 +425,6 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 					s_video_packet_nbr = 0;
 					s_audio_packet_nbr = 0;
 					std::bitset<8> stream_id((*databuf_in)[(x * packets_size) + pos + 3]);
-					std::bitset<8> start_interval_audio(191); // real start 192
-					std::bitset<8> end_interval_audio(224); // real end 223
-					std::bitset<8> start_interval_video(223); // real start 224
-					std::bitset<8> end_interval_video(240); // real start 239
 					if (stream_id > start_interval_audio && stream_id < end_interval_audio)
 					{
 						pid_vector[PID].description = 0;
@@ -429,22 +434,23 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 					{
 						pid_vector[PID].description = 1;
 						++s_video_packet_nbr;
-						
 						if (packet.is_process_mandatory == false && ask_for_find_the_gop == true)
 						{
 							while (pos != packets_size)
 							{
 								if ((*databuf_in)[(x * packets_size) + pos] == 0 && (*databuf_in)[(x * packets_size) + pos + 1] == 0 && (*databuf_in)[(x * packets_size) + pos + 2] == 1)
 								{	
+							//std::cout << "NAL unit (after start code 00 00 01) " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4]) << std::endl;
 									pes_length = (((*databuf_in)[(x * packets_size) + pos + 4] << 8) | ((*databuf_in)[(x * packets_size) + pos + 5] & 0xff));
 									header_pes_len = (*databuf_in)[(x * packets_size) + pos + 8]& 0xff;
-									if ((std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184))// 0xb8
-										|| ((*databuf_in)[(x * packets_size) + pos + 5] & 0x38) /*to keep bit 3 4 and 5 to examine it*/ == 0x8) //001
+									//std::cout << "octet +3: " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) << " octet +4: " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4]) << " octet +4 with mask " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4] & 0x38) <<std::endl;
+									//if ((std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184))// 0xb8 mpeg 2
+										//|| (std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(101)))/* 65 in hex */ //&& ((*databuf_in)[(x * packets_size) + pos + 4] & 0x38) /*to keep bit 3 4 and 5 to examine it*/ == 0x8)) //001 mpeg 4
+									if (std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(103) /*0x67 mpeg4*/ /*&& std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4]) == std::bitset<8>(48)*/
+										|| std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184) /*0xb8 mpeg2*/)
 									{
-										ask_for_find_the_gop = false;
-										ask_force_switch = true;
 										int i =  x * packets_size;
-										//std::cout << "PID: " << PID << std::endl;
+										std::cout << std::endl;
 										while (i != (x * packets_size) + packets_size)
 										{
 											std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
@@ -467,17 +473,17 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 										while (i != packet.packets_per_read * packets_size)
 										{	
 											From_I_Image.append(1,(*databuf_in)[i]);
-											std::cout << std::bitset<8>(From_I_Image[index]) << " ";
+											//std::cout << std::bitset<8>(From_I_Image[index]) << " ";
 											//std::cout << std::bitset<8>(From_I_Image[i]) << " ";
 											++i;
 											++index;
 										}
 										std::cout << std::endl << std::endl << "size " << From_I_Image.size();
 										
-										packet.packets_per_read = packet.packets_per_read - x;
+										//packet.packets_per_read = packet.packets_per_read - x;
 										
 										std::cout << std::endl;
-										x = 0;
+										//x = 0;
 										
 										std::cout << "*** Start read packets with I IMAGE ***" << std::endl;
 										int len = From_I_Image.size();
@@ -485,30 +491,38 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 										{
 											(*databuf_in)[i] = From_I_Image[i];
 											std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
-										}
+										}								
+											packet.datalen_out = packets_size * (packet.packets_per_read - x);
 										std::cout << std::endl << "*** End read packets with I IMAGE ***" << std::endl;
-									};
+										std::cout << std::bitset<8>((*databuf_in)[5]) << " ";
+										(*databuf_in)[5] = (*databuf_in)[5] | 0x80; // discontinuity indicator set to 1 
+										std::cout << std::bitset<8>((*databuf_in)[5]) << "\n";
+										std::cout << "ALL PACKET :\n";
+										for(i=0; i!= packets_size * packet.packets_per_read;i++)
+											std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
+										std::cout << "\n\n";
+										ask_for_find_the_gop = false;
+										ask_force_switch = true;
+									}
 								}
 								++pos;
 							}
 							break;
 						}
-						
-					}
-					
-					/*if (packet.is_process_mandatory == false && pid_vector[PID].description == "Video")
-					{
-						int i = x * packets_size;
-						while (i != (x * packets_size) + packets_size)
+						/*if (packet.is_process_mandatory == false && pid_vector[PID].description == 1)
 						{
-							std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
-							++i;
-						}
-						std::cout << std::endl << "pos :" << pos << " x : " << x << " pes_length : " << pes_length << " header_pes_len : " << header_pes_len << std::endl;
-						std::cout << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 5]) << std::endl;
-						std::cout << std::bitset<16>(pes_length) << std::endl;
-						std::cout << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 8]) << std::endl << std::bitset<16>(header_pes_len) << std::endl;
-					}*/
+							int i = x * packets_size;
+							while (i != (x * packets_size) + packets_size)
+							{
+								std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
+								++i;
+							}
+							std::cout << std::endl << "pos :" << pos << " x : " << x << " pes_length : " << pes_length << " header_pes_len : " << header_pes_len << std::endl;
+							std::cout << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 5]) << std::endl;
+							std::cout << std::bitset<16>(pes_length) << std::endl;
+							std::cout << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 8]) << std::endl << std::bitset<16>(header_pes_len) << std::endl;
+						}*/
+					}
 					//break;
 				}
 		}
@@ -663,8 +677,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 		
 	packet.packets_read = packet.packets_read + packet.packets_per_read;
 	packet.octets_read = packet.octets_read + packet.datalen_out;
-		
-		
+
 	// découpage packets lu par chaque read, creation list de pid et un vector permetant de compter packet par pid	
 	for (int x = 0; x != packet.packets_per_read; x++)
 	{
@@ -675,6 +688,18 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 			std::string description = "";
 			
 			PID = (((*databuf_in)[(x * packets_size) + 1] << 8) | (*databuf_in)[(x * packets_size) + 2]) & 0x1fff;
+			if (packet.is_process_mandatory == false)
+			{
+				/*if ((*databuf_in)[(x * packets_size) + 5] & (1u << 7))
+					std::cout << "IDR ?\n";
+				/*int i = x * packets_size;
+				while (i != (x * packets_size) + packets_size)
+				{
+					std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
+					++i;
+				}
+				std::cout << "\n\n";*/
+			}
 			// octet 6-7 section length, "These bytes must not exceed a value of 1021"
 			short section_length;// = (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff);
 			if ((section_length= (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff)) > 1021);
@@ -1008,8 +1033,22 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
       }
 	  if (packet_monitoring(&databuf_in, last_time_pcr, pid_vector, packet) == 0)
 		if ((packet.is_process_mandatory == true && ask_force_switch == false /*&& ask_for_find_the_gop == false*/ ) || (packet.is_process_mandatory == false && ask_force_switch == true))
-			if(sendto(packet.sd_out, databuf_in, packet.datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
+		{
+			/*std::cout << "SEND : " << packet.is_process_mandatory << ask_force_switch << std::endl;
+			std::cout << "DATALEN OUT : " << packet.datalen_out << std::endl;
+			std::cout << "adaptation field control need maybe to be **11**** " << std::bitset<8>(databuf_in[3]) << "\n";
+			int x = 0;
+			int i = 0;// x * 188;
+			//std::cout << "PID: " << PID << std::endl;
+			while (i != 188)
+			{
+				std::cout << std::bitset<8>(databuf_in[i]) << " ";
+				++i;
+			}
+			std::cout << "\n";
+			*/if(sendto(packet.sd_out, databuf_in, packet.datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
 				std::cerr << "Sending datagram message out error" << std::endl;
+		}
         //printf("Sending datagram message out...OK\n");
 		//std::cout << " w ";
 		/*for (int i = 0; i != strlen(databuf_in); i++)
@@ -1043,6 +1082,8 @@ int	main(int argc, char **argv)
 	int 				ttl_second = 0;
 	std::string			dest_info_file_second;
 	int					interval_second;
+	int					main_switch_delay;
+	int					backup_switch_delay;
 	
 	std::vector<Pid>	pid_vector_main(NBR_PID_MAX); // pid 0 to 8191 = vector of size 8192
 	Packet_info			packet_main;
@@ -1058,7 +1099,7 @@ int	main(int argc, char **argv)
 	sigprocmask(SIG_BLOCK, &signal_set, NULL); // block l'ecoute SIGUSR1 pour le main thread, pour qu'ensuite les process fils n'ecoute pas USR1 non plus
 	if (init(argc, argv, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main,
 						ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second,
-						dest_info_file_main, dest_info_file_second, interval_main, interval_second) == 1)
+						dest_info_file_main, dest_info_file_second, interval_main, interval_second, main_switch_delay, backup_switch_delay) == 1)
 		return (1);
 	
 	std::thread primary(flux_start, std::ref(pid_vector_main), std::ref(packet_main), std::ref(ingroup_main), std::ref(inport_main), std::ref(inip_main), std::ref(outgroup_main), std::ref(outport_main), std::ref(outip_main), std::ref(ttl_main), std::ref(dest_info_file_main), std::ref(interval_main));
@@ -1076,7 +1117,7 @@ int	main(int argc, char **argv)
 	tv.tv_usec = 0;
 	while(1)
 	{			
-		tv.tv_sec = 5;
+		tv.tv_sec = (packet_main.is_process_mandatory == true) ? main_switch_delay : backup_switch_delay;
 		FD_ZERO(&fd_input);
 		FD_SET(fd_main, &fd_input);
 		
@@ -1092,6 +1133,7 @@ int	main(int argc, char **argv)
 			else
 				fd_main = packet_main.sd_in;
 			ask_force_switch = false;
+			//write_on_file_flux_diffuse(packet_main.is_process_mandatory, ingroup_main, inip_main, inport_main, packet_second.is_process_mandatory, ingroup_second, inip_second, inport_second); 
 		}
 			//std::cout << "Changement d'état détecter " << retval <<  std::endl;
 			//exit(0);

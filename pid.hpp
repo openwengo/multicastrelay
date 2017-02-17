@@ -26,5 +26,5 @@ struct Pid
 	unsigned short						last_continuity_counter_per_pid;
 	std::atomic<unsigned long long int>	packet_per_pid_saved_value;
 	std::atomic<bool>					contain_pcr;
-	std::atomic<short>					stream_type;
+	std::atomic<unsigned short>			stream_type;
 };
