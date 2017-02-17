@@ -1061,6 +1061,20 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 	return (0);
 }
 
+void	write_on_file_flux_diffuse(std::atomic<bool> &is_main_process_mandatory, std::string &ingroup_main, std::string &inip_main, int &inport_main, std::string &ingroup_second, std::string &inip_second, int &inport_second)
+{
+	std::ofstream	fd;
+	
+	fd.open("flux_diffuse.txt", std::ofstream::out | std::ofstream::trunc);
+	fd << "Flux Diffuse:\n";
+	if (is_main_process_mandatory == true)
+		fd << "Group: " << ingroup_main << "\nIp: " << inip_main << "\nPort: " << inport_main << std::endl;
+	else
+		fd << "Group: " << ingroup_second << "\nIp: " << inip_second << "\nPort: " << inport_second << std::endl;
+	fd.flush();
+	fd.close();
+}
+
 int	main(int argc, char **argv)
 {
 	std::string 		ingroup_main;
@@ -1115,6 +1129,7 @@ int	main(int argc, char **argv)
 	
 	int fd_main = packet_main.sd_in;
 	tv.tv_usec = 0;
+	write_on_file_flux_diffuse(packet_main.is_process_mandatory, ingroup_main, inip_main, inport_main, ingroup_second, inip_second, inport_second); 
 	while(1)
 	{			
 		tv.tv_sec = (packet_main.is_process_mandatory == true) ? main_switch_delay : backup_switch_delay;
@@ -1133,7 +1148,7 @@ int	main(int argc, char **argv)
 			else
 				fd_main = packet_main.sd_in;
 			ask_force_switch = false;
-			//write_on_file_flux_diffuse(packet_main.is_process_mandatory, ingroup_main, inip_main, inport_main, packet_second.is_process_mandatory, ingroup_second, inip_second, inport_second); 
+			write_on_file_flux_diffuse(packet_main.is_process_mandatory, ingroup_main, inip_main, inport_main, ingroup_second, inip_second, inport_second); 
 		}
 			//std::cout << "Changement d'état détecter " << retval <<  std::endl;
 			//exit(0);
@@ -1148,6 +1163,7 @@ int	main(int argc, char **argv)
 				fd_main = packet_second.sd_in;
 			else
 				fd_main = packet_main.sd_in;
+			write_on_file_flux_diffuse(packet_main.is_process_mandatory, ingroup_main, inip_main, inport_main, ingroup_second, inip_second, inport_second); 
 		}
 	}
 	primary.join();
