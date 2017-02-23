@@ -1,6 +1,5 @@
 #include <string>
 #include <iostream>
-#include <list>
 #include <atomic>
 
 typedef enum
@@ -15,7 +14,7 @@ struct Pid
 {
 	Pid(): exist(false), pid(0), type(Nul), description(4), pkts_per_pids(0), continuity_error_per_pid(0),
 		last_continuity_counter_per_pid(99), packet_per_pid_saved_value(0),
-		contain_pcr(false), stream_type(-1) {};
+		contain_pcr(false), stream_type(-1){};
 	~Pid(){};
 	std::atomic<bool>					exist;
 	std::atomic<unsigned short>			pid;

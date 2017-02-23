@@ -30,7 +30,6 @@
 
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
 #define DEFAULT_SLEEP_DURATION 60
-#define NBR_PID_MAX 8192
 
 void	callback_signal_handler(int sign);
 void	timeout_signal_handler(int sign);
@@ -442,7 +441,7 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 									//if ((std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184))// 0xb8 mpeg 2
 										//|| (std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(101)))/* 65 in hex */ //&& ((*databuf_in)[(x * packets_size) + pos + 4] & 0x38) /*to keep bit 3 4 and 5 to examine it*/ == 0x8)) //001 mpeg 4
 									if (std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(103) /*0x67 mpeg4*/ /*&& std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4]) == std::bitset<8>(48)*/
-										/*|| std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184) /*0xb8 mpeg2*/)
+										|| std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184) /*0xb8 mpeg2*/)
 									{
 										int i =  x * packets_size;
 										std::cout << std::endl;
