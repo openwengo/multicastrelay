@@ -32,6 +32,10 @@
 #define DEFAULT_SLEEP_DURATION 60
 #define NBR_PID_MAX 8192
 
+void	callback_signal_handler(int sign);
+void	timeout_signal_handler(int sign);
+void	force_switch_signal_handler(int sign);
+
 static std::map<unsigned short, unsigned short>	dvb_description = { 
 	{16,5}, {17,6}, {18,7}, {19,8}, {20,9}, {21,10},
 	{22,11}, {23,12}, {24,12},
@@ -86,15 +90,6 @@ bool operator>(const std::bitset<N>& y, const std::bitset<N>& x)
         if (x[i] ^ y[i]) return y[i];
     }
     return false;
-}
-
-void	callback_signal_handler(int sign)
-{
-	
-	std::cout << "callback_signal_handler" << std::endl;
-	std::thread::id this_id = std::this_thread::get_id();
-	std::cout << "thread id " << this_id << std::endl;
-	ask_for_find_the_gop = true;
 }
 
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
@@ -447,7 +442,7 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 									//if ((std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184))// 0xb8 mpeg 2
 										//|| (std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(101)))/* 65 in hex */ //&& ((*databuf_in)[(x * packets_size) + pos + 4] & 0x38) /*to keep bit 3 4 and 5 to examine it*/ == 0x8)) //001 mpeg 4
 									if (std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(103) /*0x67 mpeg4*/ /*&& std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4]) == std::bitset<8>(48)*/
-										|| std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184) /*0xb8 mpeg2*/)
+										/*|| std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(184) /*0xb8 mpeg2*/)
 									{
 										int i =  x * packets_size;
 										std::cout << std::endl;
@@ -498,11 +493,21 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 										(*databuf_in)[5] = (*databuf_in)[5] | 0x80; // discontinuity indicator set to 1 
 										std::cout << std::bitset<8>((*databuf_in)[5]) << "\n";
 										std::cout << "ALL PACKET :\n";
+										len = 0;
 										for(i=0; i!= packets_size * packet.packets_per_read;i++)
+										{
+											if (len == 188)
+											{
+												len = 0;
+												std::cout << std::endl << std::endl;;
+											}
 											std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
+											++len;
+										}
 										std::cout << "\n\n";
 										ask_for_find_the_gop = false;
 										ask_force_switch = true;
+										raise(SIGUSR2);
 									}
 								}
 								++pos;
@@ -688,21 +693,22 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 			std::string description = "";
 			
 			PID = (((*databuf_in)[(x * packets_size) + 1] << 8) | (*databuf_in)[(x * packets_size) + 2]) & 0x1fff;
-			if (packet.is_process_mandatory == false)
+			/*if (packet.is_process_mandatory == false)
 			{
-				/*if ((*databuf_in)[(x * packets_size) + 5] & (1u << 7))
+				if ((*databuf_in)[(x * packets_size) + 5] & (1u << 7))
 					std::cout << "IDR ?\n";
-				/*int i = x * packets_size;
+				int i = x * packets_size;
 				while (i != (x * packets_size) + packets_size)
 				{
 					std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
 					++i;
 				}
-				std::cout << "\n\n";*/
-			}
+				std::cout << "\n\n";
+			}*/
 			// octet 6-7 section length, "These bytes must not exceed a value of 1021"
 			short section_length;// = (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff);
-			if ((section_length= (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff)) > 1021);
+			section_length= (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff);
+			//if ((section_length= (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff)) > 1021);
 			/*{
 				if (packet.is_process_mandatory == true)
 				{
@@ -738,7 +744,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 					}
 				}
 			//PSI
-			if (packet.is_process_mandatory == true && PID == 16)
+			else if (packet.is_process_mandatory == true && PID == 16)
 				std::cout << "PID : " << PID <<  " description : " << Description[pid_vector[PID].description] <<std::endl;
 			else if (PID == 0) // PAT
 				PAT_analysis(databuf_in, x, packets_size, section_length, PID, pid_vector, packet);
@@ -840,7 +846,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 }
 
 int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &ingroup, int &inport, std::string &inip, std::string &outgroup, int &outport,
-				std::string &outip, int &ttl, std::string &dest_info_file, int &interval)
+				std::string &outip, int &ttl, std::string &dest_info_file, int &interval, int &timeout_delay)
 {
 	struct 					in_addr localInterface;
     struct 					sockaddr_in groupSock;
@@ -951,7 +957,14 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
     /* Create a datagram socket on which to receive. */
 
 	packet.sd_in = socket(AF_INET, SOCK_DGRAM, 0);
-
+	struct timeval tv; 
+	tv.tv_sec = timeout_delay; 
+	tv.tv_usec = 0;
+	if (setsockopt(packet.sd_in, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof tv))
+		{ 
+			perror("setsockopt"); 
+			return -1; 
+		}
     if(packet.sd_in < 0) {
       std::cerr << "Opening datagram socket error" << std::endl;
       return(1);
@@ -1009,8 +1022,6 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 	//First time getter
 	boost::posix_time::ptime last_time = boost::posix_time::microsec_clock::local_time();
 	boost::posix_time::ptime last_time_pcr = last_time;
-	
-	signal(SIGUSR1, callback_signal_handler);
     
 	while(1) {
       packet.datalen_out = read(packet.sd_in, databuf_in, datalen_in);
@@ -1021,7 +1032,9 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 			packet.max_interval_value_between_packets = diff.total_milliseconds();
 		last_time = actual_time;
 	  
-      if(packet.datalen_out < 0) {
+	  if (packet.datalen_out == -1 && packet.is_process_mandatory == true)
+		  raise(SIGALRM);
+      /*if(packet.datalen_out < 0) {
         std::cerr << "Reading datagram im message error" << std::endl;
         close(packet.sd_in);
         close(packet.sd_out);
@@ -1030,7 +1043,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
         //printf("Reading datagram message in ...OK.\n");
 		//std::cout << " **r: " << databuf_in << "  " <<strlen(databuf_in) << "**";
     //    printf("The message from multicast server in is: \"%s\"\n", databuf_in);
-      }
+      }*/
 	  if (packet_monitoring(&databuf_in, last_time_pcr, pid_vector, packet) == 0)
 		if ((packet.is_process_mandatory == true && ask_force_switch == false /*&& ask_for_find_the_gop == false*/ ) || (packet.is_process_mandatory == false && ask_force_switch == true))
 		{
@@ -1045,8 +1058,8 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 				std::cout << std::bitset<8>(databuf_in[i]) << " ";
 				++i;
 			}
-			std::cout << "\n";
-			*/if(sendto(packet.sd_out, databuf_in, packet.datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
+			std::cout << "\n";*/
+			if(sendto(packet.sd_out, databuf_in, packet.datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
 				std::cerr << "Sending datagram message out error" << std::endl;
 		}
         //printf("Sending datagram message out...OK\n");
@@ -1100,9 +1113,9 @@ int	main(int argc, char **argv)
 	int					backup_switch_delay;
 	
 	std::vector<Pid>	pid_vector_main(NBR_PID_MAX); // pid 0 to 8191 = vector of size 8192
-	Packet_info			packet_main;
 	std::vector<Pid>	pid_vector_second(NBR_PID_MAX); // pid 0 to 8191 = vector of size 8192
-	Packet_info			packet_second;
+	extern Packet_info	packet_second;
+	extern Packet_info	packet_main;
 	
 	packet_main.is_process_mandatory.store(true, std::memory_order_relaxed);
 	packet_second.is_process_mandatory.store(false, std::memory_order_relaxed);
@@ -1116,56 +1129,14 @@ int	main(int argc, char **argv)
 						dest_info_file_main, dest_info_file_second, interval_main, interval_second, main_switch_delay, backup_switch_delay) == 1)
 		return (1);
 	
-	std::thread primary(flux_start, std::ref(pid_vector_main), std::ref(packet_main), std::ref(ingroup_main), std::ref(inport_main), std::ref(inip_main), std::ref(outgroup_main), std::ref(outport_main), std::ref(outip_main), std::ref(ttl_main), std::ref(dest_info_file_main), std::ref(interval_main));
-	std::thread secondary(flux_start, std::ref(pid_vector_second), std::ref(packet_second), std::ref(ingroup_second), std::ref(inport_second), std::ref(inip_second), std::ref(outgroup_second), std::ref(outport_second), std::ref(outip_second), std::ref(ttl_second), std::ref(dest_info_file_second), std::ref(interval_second));
+	std::thread primary(flux_start, std::ref(pid_vector_main), std::ref(packet_main), std::ref(ingroup_main), std::ref(inport_main), std::ref(inip_main), std::ref(outgroup_main), std::ref(outport_main), std::ref(outip_main), std::ref(ttl_main), std::ref(dest_info_file_main), std::ref(interval_main), std::ref(main_switch_delay));
+	std::thread secondary(flux_start, std::ref(pid_vector_second), std::ref(packet_second), std::ref(ingroup_second), std::ref(inport_second), std::ref(inip_second), std::ref(outgroup_second), std::ref(outport_second), std::ref(outip_second), std::ref(ttl_second), std::ref(dest_info_file_second), std::ref(interval_second), std::ref(backup_switch_delay));
 	
 	sigprocmask(SIG_UNBLOCK, &signal_set, NULL); // laisse main thread ecouter SIGUSR1
 	
-	fd_set	fd_input;
-	struct timeval	tv;
-	int 			retval;
-
-	while (packet_main.sd_in == 0 || packet_second.sd_in == 0); // wait init
-	
-	int fd_main = packet_main.sd_in;
-	tv.tv_usec = 0;
-	write_on_file_flux_diffuse(packet_main.is_process_mandatory, ingroup_main, inip_main, inport_main, ingroup_second, inip_second, inport_second); 
-	while(1)
-	{			
-		tv.tv_sec = (packet_main.is_process_mandatory == true) ? main_switch_delay : backup_switch_delay;
-		FD_ZERO(&fd_input);
-		FD_SET(fd_main, &fd_input);
-		
-		retval = select(fd_main + 1, &fd_input, NULL, NULL, &tv);
-		/*if (FD_ISSET(fd_main, &fd_input)) // changement d'état détecter
-		{*/
-		if (ask_force_switch == true)
-		{
-			packet_main.is_process_mandatory = !packet_main.is_process_mandatory;
-			packet_second.is_process_mandatory = !packet_second.is_process_mandatory;
-			if (fd_main == packet_main.sd_in)
-				fd_main = packet_second.sd_in;
-			else
-				fd_main = packet_main.sd_in;
-			ask_force_switch = false;
-			write_on_file_flux_diffuse(packet_main.is_process_mandatory, ingroup_main, inip_main, inport_main, ingroup_second, inip_second, inport_second); 
-		}
-			//std::cout << "Changement d'état détecter " << retval <<  std::endl;
-			//exit(0);
-		//}
-		if (retval == 0) // select time out
-		{
-			std::cout << "Aucun changement d'état détecter depuis 5 sec " << retval <<std::endl;
-			ask_for_find_the_gop = true;
-			packet_main.is_process_mandatory = !packet_main.is_process_mandatory;
-			packet_second.is_process_mandatory = !packet_second.is_process_mandatory;
-			if (fd_main == packet_main.sd_in)
-				fd_main = packet_second.sd_in;
-			else
-				fd_main = packet_main.sd_in;
-			write_on_file_flux_diffuse(packet_main.is_process_mandatory, ingroup_main, inip_main, inport_main, ingroup_second, inip_second, inport_second); 
-		}
-	}
+	signal(SIGUSR1, callback_signal_handler);
+	signal(SIGUSR2, force_switch_signal_handler);
+	signal(SIGALRM, timeout_signal_handler);
 	primary.join();
 	secondary.join();
 	return (0);

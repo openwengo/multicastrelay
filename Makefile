@@ -4,9 +4,11 @@ CC = g++
 
 RM	= rm -f
 
-SRC = mcastreplay.cpp
+SRC = mcastreplay.cpp\
+	  signal.cpp
 
-OBJS = mcastreplay.o
+OBJS = mcastreplay.o\
+	   signal.o
 
 #BOOST_INC=-I../boost_1_61_0/
 BOOST_INC=
