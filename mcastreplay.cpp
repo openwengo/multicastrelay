@@ -70,8 +70,20 @@ const static std::vector<std::string> Description =
 	"measurement", "DIT", "SIT"
 };
 
+std::atomic<bool>	pid_vector_main_bool(true);
+std::atomic<bool>	pid_vector_second_bool(false);
 std::atomic<bool>	ask_for_find_the_gop(false);
 std::atomic<bool>	ask_force_switch(false);
+std::string 		ingroup_main;
+int  				inport_main;
+std::string 		inip_main;
+std::string 		ingroup_second;
+int  				inport_second;
+std::string 		inip_second;
+extern std::vector<Pid>	pid_vector_main; // pid 0 to 8191 = vector of size 8192
+extern std::vector<Pid>	pid_vector_second; // pid 0 to 8191 = vector of size 8192
+extern Packet_info	packet_second;
+extern Packet_info	packet_main;
 
 template<std::size_t N>
 bool operator<(const std::bitset<N>& x, const std::bitset<N>& y)
@@ -481,15 +493,15 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 										
 										std::cout << "*** Start read packets with I IMAGE ***" << std::endl;
 										int len = From_I_Image.size();
-										for (i = 0; i != len; i++)
+										/*for (i = 0; i != len; i++)
 										{
 											(*databuf_in)[i] = From_I_Image[i];
 											std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
 										}								
 											packet.datalen_out = packets_size * (packet.packets_per_read - x);
-										std::cout << std::endl << "*** End read packets with I IMAGE ***" << std::endl;
+										*/std::cout << std::endl << "*** End read packets with I IMAGE ***" << std::endl;
 										std::cout << std::bitset<8>((*databuf_in)[5]) << " ";
-										(*databuf_in)[5] = (*databuf_in)[5] | 0x80; // discontinuity indicator set to 1 
+										//(*databuf_in)[5] = (*databuf_in)[5] | 0x80; // discontinuity indicator set to 1 
 										std::cout << std::bitset<8>((*databuf_in)[5]) << "\n";
 										std::cout << "ALL PACKET :\n";
 										len = 0;
@@ -839,6 +851,13 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 				}
 			}
 			pid_vector[PID].last_continuity_counter_per_pid = continuity;
+			
+			if (pid_vector[PID].switch_correction == true)
+			{
+				std::cout << "SWITCH CORRECTION PID : " << PID << std::endl;
+				(*databuf_in)[(x * packets_size) + 5] = (*databuf_in)[(x * packets_size) + 5] | 0x80;// discontinuity indicator set to 1 
+				pid_vector[PID].switch_correction = false;
+			}
 		}
 	}
 	return (0);
@@ -1044,7 +1063,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
     //    printf("The message from multicast server in is: \"%s\"\n", databuf_in);
       }*/
 	  if (packet_monitoring(&databuf_in, last_time_pcr, pid_vector, packet) == 0)
-		if ((packet.is_process_mandatory == true && ask_force_switch == false /*&& ask_for_find_the_gop == false*/ ) || (packet.is_process_mandatory == false && ask_force_switch == true))
+		if ((packet.is_process_mandatory == true && ask_force_switch == false /*&& ask_for_find_the_gop == false*/) || (packet.is_process_mandatory == false && ask_force_switch == true))
 		{
 			/*std::cout << "SEND : " << packet.is_process_mandatory << ask_force_switch << std::endl;
 			std::cout << "DATALEN OUT : " << packet.datalen_out << std::endl;
@@ -1073,7 +1092,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 	return (0);
 }
 
-void	write_on_file_flux_diffuse(std::atomic<bool> &is_main_process_mandatory, std::string &ingroup_main, std::string &inip_main, int &inport_main, std::string &ingroup_second, std::string &inip_second, int &inport_second)
+void	write_on_file_flux_diffuse(std::atomic<bool> &is_main_process_mandatory)
 {
 	std::ofstream	fd;
 	
@@ -1089,9 +1108,6 @@ void	write_on_file_flux_diffuse(std::atomic<bool> &is_main_process_mandatory, st
 
 int	main(int argc, char **argv)
 {
-	std::string 		ingroup_main;
-	int  				inport_main;
-	std::string 		inip_main;
 	std::string			outgroup_main; 
     int					outport_main;
     std::string 		outip_main;
@@ -1099,9 +1115,6 @@ int	main(int argc, char **argv)
 	std::string			dest_info_file_main;	
 	int					interval_main;
 	
-	std::string 		ingroup_second;
-	int  				inport_second;
-	std::string 		inip_second;
 	std::string			outgroup_second; 
     int					outport_second;
     std::string 		outip_second;
@@ -1110,11 +1123,6 @@ int	main(int argc, char **argv)
 	int					interval_second;
 	int					main_switch_delay;
 	int					backup_switch_delay;
-	
-	std::vector<Pid>	pid_vector_main(NBR_PID_MAX); // pid 0 to 8191 = vector of size 8192
-	std::vector<Pid>	pid_vector_second(NBR_PID_MAX); // pid 0 to 8191 = vector of size 8192
-	extern Packet_info	packet_second;
-	extern Packet_info	packet_main;
 	
 	packet_main.is_process_mandatory.store(true, std::memory_order_relaxed);
 	packet_second.is_process_mandatory.store(false, std::memory_order_relaxed);

@@ -14,7 +14,7 @@ struct Pid
 {
 	Pid(): exist(false), pid(0), type(Nul), description(4), pkts_per_pids(0), continuity_error_per_pid(0),
 		last_continuity_counter_per_pid(99), packet_per_pid_saved_value(0),
-		contain_pcr(false), stream_type(-1){};
+		contain_pcr(false), stream_type(-1), switch_correction(false){};
 	~Pid(){};
 	std::atomic<bool>					exist;
 	std::atomic<unsigned short>			pid;
@@ -26,4 +26,5 @@ struct Pid
 	std::atomic<unsigned long long int>	packet_per_pid_saved_value;
 	std::atomic<bool>					contain_pcr;
 	std::atomic<unsigned short>			stream_type;
+	std::atomic<bool>					switch_correction;
 };
