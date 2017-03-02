@@ -24,6 +24,8 @@
 #include <boost/asio.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/xml_parser.hpp>
 
 #include "pid.hpp"
 #include "packets_general_info.hpp"
@@ -72,15 +74,33 @@ const static std::vector<std::string> Description =
 
 std::atomic<bool>	ask_for_find_the_gop(false);
 std::atomic<bool>	ask_force_switch(false);
+
 std::string 		ingroup_main;
 int  				inport_main;
 std::string 		inip_main;
 std::string 		ingroup_second;
 int  				inport_second;
 std::string 		inip_second;
+std::string			outgroup_main; 
+int					outport_main;
+std::string 		outip_main;
+int 				ttl_main = 0;
+std::string			outgroup_second; 
+int					outport_second;
+std::string 		outip_second;
+int 				ttl_second = 0;
+int					interval_main;
+int					interval_second;
+int					main_switch_delay;
+int					backup_switch_delay;
+
 extern Packet_info	packet_second;
 extern Packet_info	packet_main;
-bool				debug;
+bool				switch_debug = false;
+bool				sonde_only = false;
+
+extern std::vector<Pid>	pid_vector_main; // pid 0 to 8191 = vector of size 8192
+extern std::vector<Pid>	pid_vector_second; // pid 0 to 8191 = vector of size 8192
 
 template<std::size_t N>
 bool operator<(const std::bitset<N>& x, const std::bitset<N>& y)
@@ -128,6 +148,55 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
     return res;
 }
 
+void	write_info_xml(const Packet_info &packet, const std::vector<Pid> &pid_vector, const std::string &ingroup, const int &inport, const std::string &inip, const std::string &outgroup,
+						const int &outport, const std::string &outip, const int &ttl, const int &interval, const int &switch_delay)
+{
+	using boost::property_tree::ptree;
+	ptree pt;
+	ptree rootnode;
+	ptree pidnode;
+	ptree set;
+	
+	//pt.put("Stream", "Hello");
+	
+	for (int i = 0; i != NBR_PID_MAX; i++)
+	{
+		if (pid_vector[i].exist == true)
+		{
+			pidnode.put("<xmlattr>.Value", i);
+			pidnode.put("<xmlattr>.Continuity Errors", pid_vector[i].continuity_error_per_pid);
+			pidnode.put("<xmlattr>.Type", Type[pid_vector[i].type]);
+			pidnode.put("<xmlattr>.Description", Description[pid_vector[i].description]);
+			pidnode.put("<xmlattr>.Stream Type", stream_type_possibility[pid_vector[i].stream_type]);
+			rootnode.add_child("PID", pidnode);
+		}
+	}
+	
+	rootnode.put("<xmlattr>.InGroup", ingroup);
+	rootnode.put("<xmlattr>.InIp", inip);
+	rootnode.put("<xmlattr>.InPort", inport);
+	rootnode.put("<xmlattr>.Outgroup", outgroup);
+	rootnode.put("<xmlattr>.OutIp", outip);
+	rootnode.put("<xmlattr>.OutPort", outport);
+	rootnode.put("<xmlattr>.Interval", interval);
+	rootnode.put("<xmlattr>.Switch Delay", switch_delay);
+	pt.add_child("Stream", rootnode);
+
+	std::string dest(packet.atomic_dest_info_file);
+	
+	boost::property_tree::xml_writer_settings<char> settings('\t', 1);
+	if (packet.is_process_mandatory == true)
+	{
+		dest += "MainInfo.xml";
+		write_xml(dest, pt, std::locale(), settings);
+	}
+	else
+	{
+		dest += "BackupInfo.xml";
+		write_xml(dest, pt, std::locale(), settings);
+	}
+}
+
 void	print(const std::string &inip, const int &inport, const int &interval, std::vector<Pid> &pid_vector, Packet_info &packet)
 {
 	std::ofstream									fd_packets;
@@ -149,6 +218,8 @@ void	print(const std::string &inip, const int &inport, const int &interval, std:
 		
 		if (packet.is_process_mandatory == true)
 		{
+			write_info_xml(packet_main, pid_vector_main, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main, interval_main, main_switch_delay); 
+			write_info_xml(packet_second, pid_vector_second, ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second, interval_second, backup_switch_delay); 
 			for (int cursor = 0 ; cursor != NBR_PID_MAX; cursor++)
 			{
 				if (pid_vector[cursor].exist == true)
@@ -307,7 +378,8 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("OutSecond.Interval", boost::program_options::value<int>(&interval_second)->default_value(DEFAULT_SLEEP_DURATION),	"Second Interval between each print out/file in seconds")
 	("InMain.DelaySwitch", boost::program_options::value<int>(&main_switch_delay)->default_value(1),					"Delay for timeout switch, Normal to Backup")
 	("InSecond.DelaySwitch", boost::program_options::value<int>(&backup_switch_delay)->default_value(1),				"Delay for timeout switch, Backup to Normal")
-	("Debug.DebugFlag", boost::program_options::value<bool>(&debug)->default_value(false),								"Debug Flag");
+	("Debug.SondeOnly", boost::program_options::value<bool>(&sonde_only)->default_value(false),							"Only sonde functionalities enabled")
+	("Debug.SwitchDebug", boost::program_options::value<bool>(&switch_debug)->default_value(false),						"For debug the switch (main flux stop during gop search by secondary flux)");
 	
 	// Option from Command Line recuperation
 	boost::program_options::options_description description("Command Line Options");
@@ -335,7 +407,8 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("config", boost::program_options::value<std::string>(&config_file), 					"Config File Name")
 	("main-switch-delay", boost::program_options::value<int>(&main_switch_delay),			"Delay for timeout switch, Normal to Backup")
 	("second-switch-delay", boost::program_options::value<int>(&backup_switch_delay),		"Delay for timeout switch, Backup to Normal")
-	("debug", boost::program_options::value<bool>(&debug),									"Debug Flag")
+	("sonde-only", boost::program_options::value<bool>(&sonde_only),						"Only sonde functionalities enabled")
+	("switch-debug", boost::program_options::value<bool>(&switch_debug),					"For debug the switch (main flux stop during gop search by secondary flux)")
 	("help", "Help Screen");
 	
 	try
@@ -363,9 +436,9 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	}
 	
 	if (ingroup_main.empty() == true || inip_main.empty() == true || inport_main == 0 || outgroup_main.empty() == true || 
-		outip_main.empty() == true || outport_main == 0 || ttl_main == 0 || 
+		outip_main.empty() == true || outport_main == 0 || ttl_main == 0 /*|| 
 		ingroup_second.empty() == true || inip_second.empty() == true || inport_second == 0 || outgroup_second.empty() == true || 
-		outip_second.empty() == true || outport_second == 0 || ttl_second == 0)
+		outip_second.empty() == true || outport_second == 0 || ttl_second == 0*/)
 	{
 		std::cerr << "Group, Ip, Port from In/Out and Ttl Out needed to run it" << std::endl;
 		std::cerr << description << std::endl << file_description << std::endl;
@@ -903,14 +976,17 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
     /* Create a datagram socket on which to receive. */
 
 	packet.sd_in = socket(AF_INET, SOCK_DGRAM, 0);
-	struct timeval tv; 
-	tv.tv_sec = timeout_delay; 
-	tv.tv_usec = 0;
-	if (setsockopt(packet.sd_in, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof tv))
-		{ 
-			perror("setsockopt"); 
-			return -1; 
-		}
+	if (timeout_delay != 0) //if timeout delay == 0 => no timeout
+	{
+		struct timeval tv; 
+		tv.tv_sec = timeout_delay; 
+		tv.tv_usec = 0;
+		if (setsockopt(packet.sd_in, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof tv))
+			{ 
+				perror("setsockopt"); 
+				return -1; 
+			}
+	}
     if(packet.sd_in < 0) {
       std::cerr << "Opening datagram socket error" << std::endl;
       return(1);
@@ -992,8 +1068,8 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
       }*/
 	  if (packet_monitoring(&databuf_in, last_time_pcr, pid_vector, packet) == 0)
 	  {
-		if ((packet.is_process_mandatory == true && ask_force_switch == false && debug == false)
-			|| (packet.is_process_mandatory == true && ask_force_switch == false && debug == true && ask_for_find_the_gop == false))
+		if ((packet.is_process_mandatory == true && ask_force_switch == false && switch_debug == false)
+			|| (packet.is_process_mandatory == true && ask_force_switch == false && switch_debug == true && ask_for_find_the_gop == false))
 		{
 			/*std::cout << "SEND : " << packet.is_process_mandatory << ask_force_switch << std::endl;
 			std::cout << "DATALEN OUT : " << packet.datalen_out << std::endl;
@@ -1039,45 +1115,35 @@ void	write_on_file_flux_diffuse(std::atomic<bool> &is_main_process_mandatory)
 
 int	main(int argc, char **argv)
 {
-	std::string			outgroup_main; 
-    int					outport_main;
-    std::string 		outip_main;
-	int 				ttl_main = 0;
-	std::string			dest_info_file_main;	
-	int					interval_main;
-	
-	std::string			outgroup_second; 
-    int					outport_second;
-    std::string 		outip_second;
-	int 				ttl_second = 0;
+	std::string			dest_info_file_main;
 	std::string			dest_info_file_second;
-	int					interval_second;
-	int					main_switch_delay;
-	int					backup_switch_delay;
-	
-	extern std::vector<Pid>	pid_vector_main; // pid 0 to 8191 = vector of size 8192
-	extern std::vector<Pid>	pid_vector_second; // pid 0 to 8191 = vector of size 8192
 	
 	packet_main.is_process_mandatory.store(true, std::memory_order_relaxed);
 	packet_second.is_process_mandatory.store(false, std::memory_order_relaxed);
 	
-	sigset_t signal_set;
-	sigemptyset(&signal_set);
-	sigaddset(&signal_set, SIGUSR1);
-	sigprocmask(SIG_BLOCK, &signal_set, NULL); // block l'ecoute SIGUSR1 pour le main thread, pour qu'ensuite les process fils n'ecoute pas USR1 non plus
 	if (init(argc, argv, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main,
 						ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second,
 						dest_info_file_main, dest_info_file_second, interval_main, interval_second, main_switch_delay, backup_switch_delay) == 1)
 		return (1);
 	
-	std::thread primary(flux_start, std::ref(pid_vector_main), std::ref(packet_main), std::ref(ingroup_main), std::ref(inport_main), std::ref(inip_main), std::ref(outgroup_main), std::ref(outport_main), std::ref(outip_main), std::ref(ttl_main), std::ref(dest_info_file_main), std::ref(interval_main), std::ref(main_switch_delay));
-	std::thread secondary(flux_start, std::ref(pid_vector_second), std::ref(packet_second), std::ref(ingroup_second), std::ref(inport_second), std::ref(inip_second), std::ref(outgroup_second), std::ref(outport_second), std::ref(outip_second), std::ref(ttl_second), std::ref(dest_info_file_second), std::ref(interval_second), std::ref(backup_switch_delay));
-	
-	sigprocmask(SIG_UNBLOCK, &signal_set, NULL); // laisse main thread ecouter SIGUSR1
-	
-	signal(SIGUSR1, callback_signal_handler);
-	signal(SIGUSR2, force_switch_signal_handler);
-	signal(SIGALRM, timeout_signal_handler);
+	sigset_t signal_set;
+	std::thread primary;
+	std::thread secondary;
+	if (sonde_only == false)
+	{
+		sigemptyset(&signal_set);
+		sigaddset(&signal_set, SIGUSR1);
+		sigprocmask(SIG_BLOCK, &signal_set, NULL); // block l'ecoute SIGUSR1 pour le main thread, pour qu'ensuite les process fils n'ecoute pas USR1 non plus
+		signal(SIGUSR1, callback_signal_handler);
+		signal(SIGUSR2, force_switch_signal_handler);
+		signal(SIGALRM, timeout_signal_handler);
+	}
+	primary = std::thread(flux_start, std::ref(pid_vector_main), std::ref(packet_main), std::ref(ingroup_main), std::ref(inport_main), std::ref(inip_main), std::ref(outgroup_main), std::ref(outport_main), std::ref(outip_main), std::ref(ttl_main), std::ref(dest_info_file_main), std::ref(interval_main), std::ref(main_switch_delay));
+	if (sonde_only == false)
+	{
+		secondary = std::thread(flux_start, std::ref(pid_vector_second), std::ref(packet_second), std::ref(ingroup_second), std::ref(inport_second), std::ref(inip_second), std::ref(outgroup_second), std::ref(outport_second), std::ref(outip_second), std::ref(ttl_second), std::ref(dest_info_file_second), std::ref(interval_second), std::ref(backup_switch_delay));
+		sigprocmask(SIG_UNBLOCK, &signal_set, NULL); // laisse main thread ecouter SIGUSR1
+	}
 	primary.join();
 	secondary.join();
 	return (0);

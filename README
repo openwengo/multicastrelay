@@ -24,7 +24,9 @@ Command Line Options:
   --config arg              Config File Name
   --main-switch-delay arg   Delay for timeout switch, Normal to Backup
   --second-switch-delay arg Delay for timeout switch, Backup to Normal
-  --debug arg               Debug Flag
+  --sonde-only arg          Only sonde functionalities enabled
+  --switch-debug arg        For debug the switch (main flux stop during gop
+                            search by secondary flux)
   --help                    Help Screen
 
 File Options:
@@ -50,4 +52,6 @@ File Options:
                                   in seconds
   --InMain.DelaySwitch arg (=1)   Delay for timeout switch, Normal to Backup
   --InSecond.DelaySwitch arg (=1) Delay for timeout switch, Backup to Normal
-  --Debug.DebugFlag arg (=0)      Debug Flag
+  --Debug.SondeOnly arg (=0)      Only sonde functionalities enabled
+  --Debug.SwitchDebug arg (=0)    For debug the switch (main flux stop during
+                                  gop search by secondary flux)
