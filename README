@@ -1,0 +1,53 @@
+Group, Ip, Port from In/Out and Ttl Out needed to run it
+
+Command Line Options:
+  --ingroup_main arg        Main Group Entry
+  --inip_main arg           Main Ip Entry
+  --inport_main arg         Main Port Entry
+  --outgroup_main arg       Main Group Output
+  --outip_main arg          MainIp Output
+  --outport_main arg        Main Port Output
+  --ttl_main arg            Main Ttl Output
+  --statspath_main arg      Main Stats Path
+  --interval_main arg       Main Interval between each print out/file in
+                            seconds
+  --ingroup_second arg      Second Group Entry
+  --inip_second arg         Second Ip Entry
+  --inport_second arg       Second Port Entry
+  --outgroup_second arg     Second Group Output
+  --outip_second arg        Second Ip Output
+  --outport_second arg      Second Port Output
+  --ttl_second arg          Second Ttl Output
+  --statspath_second arg    Second Stats Path
+  --interval_second arg     Second Interval between each print out/file in
+                            seconds
+  --config arg              Config File Name
+  --main-switch-delay arg   Delay for timeout switch, Normal to Backup
+  --second-switch-delay arg Delay for timeout switch, Backup to Normal
+  --debug arg               Debug Flag
+  --help                    Help Screen
+
+File Options:
+  --InMain.Group arg              Group Main Entry
+  --InMain.Ip arg                 Ip Main Entry
+  --InMain.Port arg (=0)          Port Main Entry
+  --OutMain.Group arg             Group Main Output
+  --OutMain.Ip arg                Ip Main Output
+  --OutMain.Port arg (=0)         Port Main Output
+  --OutMain.Ttl arg (=0)          Ttl Main Output
+  --OutMain.StatsPath arg         Main Stats Path
+  --OutMain.Interval arg (=60)    Main Interval between each print out/file in
+                                  seconds
+  --InSecond.Group arg            Group Second Entry
+  --InSecond.Ip arg               Ip Second Entry
+  --InSecond.Port arg (=0)        Port Second Entry
+  --OutSecond.Group arg           Group Second Output
+  --OutSecond.Ip arg              Ip Second Output
+  --OutSecond.Port arg (=0)       Port Second Output
+  --OutSecond.Ttl arg (=0)        Ttl Second Output
+  --OutSecond.StatsPath arg       Second Stats Path
+  --OutSecond.Interval arg (=60)  Second Interval between each print out/file
+                                  in seconds
+  --InMain.DelaySwitch arg (=1)   Delay for timeout switch, Normal to Backup
+  --InSecond.DelaySwitch arg (=1) Delay for timeout switch, Backup to Normal
+  --Debug.DebugFlag arg (=0)      Debug Flag
