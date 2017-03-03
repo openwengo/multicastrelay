@@ -471,11 +471,11 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("statspath_second", boost::program_options::value<std::string>(&dest_info_file_second),"Second Stats Path")
 	("interval_second", boost::program_options::value<int>(&interval_second), 				"Second Interval between each print out/file in seconds")
 	("config", boost::program_options::value<std::string>(&config_file), 					"Config File Name")
-	("main-switch-delay", boost::program_options::value<int>(&main_switch_delay),			"Delay for timeout switch, Normal to Backup")
-	("second-switch-delay", boost::program_options::value<int>(&backup_switch_delay),		"Delay for timeout switch, Backup to Normal")
-	("sonde-only", boost::program_options::value<bool>(&sonde_only),						"Only sonde functionalities enabled")
-	("switch-debug", boost::program_options::value<bool>(&switch_debug),					"For debug the switch (main flux stop during gop search by secondary flux)")
-	("pid_flush_delay", boost::program_options::value<int>(&pid_flush_delay),				"Timer for erase a PID if we dont receive a precise PID during this period");
+	("main_switch_delay", boost::program_options::value<int>(&main_switch_delay),			"Delay for timeout switch, Normal to Backup")
+	("second_switch_delay", boost::program_options::value<int>(&backup_switch_delay),		"Delay for timeout switch, Backup to Normal")
+	("sonde_only", boost::program_options::value<bool>(&sonde_only),						"Only sonde functionalities enabled")
+	("switch_debug", boost::program_options::value<bool>(&switch_debug),					"For debug the switch (main flux stop during gop search by secondary flux)")
+	("pid_flush_delay", boost::program_options::value<int>(&pid_flush_delay),				"Timer for erase a PID if we dont receive a precise PID during this period")
 	("help", "Help Screen");
 	
 	try

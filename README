@@ -1,5 +1,4 @@
 Group, Ip, Port from In/Out and Ttl Out needed to run it
-
 Command Line Options:
   --ingroup_main arg        Main Group Entry
   --inip_main arg           Main Ip Entry
@@ -22,36 +21,40 @@ Command Line Options:
   --interval_second arg     Second Interval between each print out/file in
                             seconds
   --config arg              Config File Name
-  --main-switch-delay arg   Delay for timeout switch, Normal to Backup
-  --second-switch-delay arg Delay for timeout switch, Backup to Normal
-  --sonde-only arg          Only sonde functionalities enabled
-  --switch-debug arg        For debug the switch (main flux stop during gop
+  --main_switch_delay arg   Delay for timeout switch, Normal to Backup
+  --second_switch_delay arg Delay for timeout switch, Backup to Normal
+  --sonde_only arg          Only sonde functionalities enabled
+  --switch_debug arg        For debug the switch (main flux stop during gop
                             search by secondary flux)
+  --pid_flush_delay arg     Timer for erase a PID if we dont receive a precise
+                            PID during this period
   --help                    Help Screen
 
 File Options:
-  --InMain.Group arg              Group Main Entry
-  --InMain.Ip arg                 Ip Main Entry
-  --InMain.Port arg (=0)          Port Main Entry
-  --OutMain.Group arg             Group Main Output
-  --OutMain.Ip arg                Ip Main Output
-  --OutMain.Port arg (=0)         Port Main Output
-  --OutMain.Ttl arg (=0)          Ttl Main Output
-  --OutMain.StatsPath arg         Main Stats Path
-  --OutMain.Interval arg (=60)    Main Interval between each print out/file in
-                                  seconds
-  --InSecond.Group arg            Group Second Entry
-  --InSecond.Ip arg               Ip Second Entry
-  --InSecond.Port arg (=0)        Port Second Entry
-  --OutSecond.Group arg           Group Second Output
-  --OutSecond.Ip arg              Ip Second Output
-  --OutSecond.Port arg (=0)       Port Second Output
-  --OutSecond.Ttl arg (=0)        Ttl Second Output
-  --OutSecond.StatsPath arg       Second Stats Path
-  --OutSecond.Interval arg (=60)  Second Interval between each print out/file
-                                  in seconds
-  --InMain.DelaySwitch arg (=1)   Delay for timeout switch, Normal to Backup
-  --InSecond.DelaySwitch arg (=1) Delay for timeout switch, Backup to Normal
-  --Debug.SondeOnly arg (=0)      Only sonde functionalities enabled
-  --Debug.SwitchDebug arg (=0)    For debug the switch (main flux stop during
-                                  gop search by secondary flux)
+  --InMain.Group arg               Group Main Entry
+  --InMain.Ip arg                  Ip Main Entry
+  --InMain.Port arg (=0)           Port Main Entry
+  --OutMain.Group arg              Group Main Output
+  --OutMain.Ip arg                 Ip Main Output
+  --OutMain.Port arg (=0)          Port Main Output
+  --OutMain.Ttl arg (=0)           Ttl Main Output
+  --OutMain.StatsPath arg          Main Stats Path
+  --OutMain.Interval arg (=60)     Main Interval between each print out/file in
+                                   seconds
+  --InSecond.Group arg             Group Second Entry
+  --InSecond.Ip arg                Ip Second Entry
+  --InSecond.Port arg (=0)         Port Second Entry
+  --OutSecond.Group arg            Group Second Output
+  --OutSecond.Ip arg               Ip Second Output
+  --OutSecond.Port arg (=0)        Port Second Output
+  --OutSecond.Ttl arg (=0)         Ttl Second Output
+  --OutSecond.StatsPath arg        Second Stats Path
+  --OutSecond.Interval arg (=60)   Second Interval between each print out/file
+                                   in seconds
+  --InMain.DelaySwitch arg (=1)    Delay for timeout switch, Normal to Backup
+  --InSecond.DelaySwitch arg (=1)  Delay for timeout switch, Backup to Normal
+  --Debug.SondeOnly arg (=0)       Only sonde functionalities enabled
+  --Debug.SwitchDebug arg (=0)     For debug the switch (main flux stop during
+                                   gop search by secondary flux)
+  --Shared.PidFlushDelay arg (=20) Timer for erase a PID if we dont receive a
+                                   precise PID during this period
