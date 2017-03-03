@@ -17,5 +17,5 @@ struct Packet_info
 	std::atomic<int>					datalen_out;
 	std::atomic<int>					packets_per_read;
 	std::atomic<bool>					is_process_mandatory;
-	//int									multiplicateur_interval;
+	int									multiplicateur_interval;
 };
