@@ -1123,7 +1123,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 		last_time = actual_time;
 	  
 	  if (packet.datalen_out == -1 && packet.is_process_mandatory == true)
-		  raise(SIGALRM);
+		  raise(SIGUSR1);
       /*if(packet.datalen_out < 0) {
         std::cerr << "Reading datagram im message error" << std::endl;
         close(packet.sd_in);
@@ -1199,12 +1199,13 @@ int	main(int argc, char **argv)
 	std::thread secondary;
 	if (sonde_only == false)
 	{
-		sigemptyset(&signal_set);
+		/*sigemptyset(&signal_set);
 		sigaddset(&signal_set, SIGUSR1);
+		sigaddset(&signal_set, SIGUSR2);
 		sigprocmask(SIG_BLOCK, &signal_set, NULL); // block l'ecoute SIGUSR1 pour le main thread, pour qu'ensuite les process fils n'ecoute pas USR1 non plus
-		signal(SIGUSR1, callback_signal_handler);
+		*/signal(SIGUSR1, callback_signal_handler);
 		signal(SIGUSR2, force_switch_signal_handler);
-		signal(SIGALRM, timeout_signal_handler);
+		//signal(SIGALRM, timeout_signal_handler);
 	}
 	primary = std::thread(flux_start, std::ref(pid_vector_main), std::ref(packet_main), std::ref(ingroup_main), std::ref(inport_main), std::ref(inip_main), std::ref(outgroup_main), std::ref(outport_main), std::ref(outip_main), std::ref(ttl_main), std::ref(dest_info_file_main), std::ref(interval_main), std::ref(main_switch_delay));
 	if (sonde_only == false)

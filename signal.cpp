@@ -24,11 +24,11 @@ void	callback_signal_handler(int sign)
 	ask_for_find_the_gop = true;
 }
 
-void	timeout_signal_handler(int sign)
+/*void	timeout_signal_handler(int sign)
 {
 	std::cout << "Aucun changement d'état détecter x sec " << std::endl;
 	ask_for_find_the_gop = true; 
-}
+}*/
 
 void	force_switch_signal_handler(int sign)
 {
