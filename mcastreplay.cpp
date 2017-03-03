@@ -1194,25 +1194,16 @@ int	main(int argc, char **argv)
 						dest_info_file_main, dest_info_file_second, interval_main, interval_second, main_switch_delay, backup_switch_delay) == 1)
 		return (1);
 	
-	sigset_t signal_set;
 	std::thread primary;
 	std::thread secondary;
 	if (sonde_only == false)
 	{
-		/*sigemptyset(&signal_set);
-		sigaddset(&signal_set, SIGUSR1);
-		sigaddset(&signal_set, SIGUSR2);
-		sigprocmask(SIG_BLOCK, &signal_set, NULL); // block l'ecoute SIGUSR1 pour le main thread, pour qu'ensuite les process fils n'ecoute pas USR1 non plus
-		*/signal(SIGUSR1, callback_signal_handler);
+		signal(SIGUSR1, callback_signal_handler);
 		signal(SIGUSR2, force_switch_signal_handler);
-		//signal(SIGALRM, timeout_signal_handler);
 	}
 	primary = std::thread(flux_start, std::ref(pid_vector_main), std::ref(packet_main), std::ref(ingroup_main), std::ref(inport_main), std::ref(inip_main), std::ref(outgroup_main), std::ref(outport_main), std::ref(outip_main), std::ref(ttl_main), std::ref(dest_info_file_main), std::ref(interval_main), std::ref(main_switch_delay));
 	if (sonde_only == false)
-	{
 		secondary = std::thread(flux_start, std::ref(pid_vector_second), std::ref(packet_second), std::ref(ingroup_second), std::ref(inport_second), std::ref(inip_second), std::ref(outgroup_second), std::ref(outport_second), std::ref(outip_second), std::ref(ttl_second), std::ref(dest_info_file_second), std::ref(interval_second), std::ref(backup_switch_delay));
-		sigprocmask(SIG_UNBLOCK, &signal_set, NULL); // laisse main thread ecouter SIGUSR1
-	}
 	primary.join();
 	secondary.join();
 	return (0);
