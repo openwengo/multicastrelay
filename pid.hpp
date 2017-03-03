@@ -27,5 +27,5 @@ struct Pid
 	std::atomic<bool>					contain_pcr;
 	std::atomic<unsigned short>			stream_type;
 	std::atomic<bool>					switch_correction;
-	std::atomic<int>					pseudo_timeout_counter;
+	//std::atomic<int>					pseudo_timeout_counter;
 };

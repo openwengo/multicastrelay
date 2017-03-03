@@ -100,6 +100,8 @@ extern Packet_info	packet_main;
 bool				switch_debug = false;
 bool				sonde_only = false;
 
+std::atomic<char>	multiplicateur_interval;
+
 extern std::vector<Pid>	pid_vector_main; // pid 0 to 8191 = vector of size 8192
 extern std::vector<Pid>	pid_vector_second; // pid 0 to 8191 = vector of size 8192
 
@@ -204,6 +206,8 @@ void	write_info_xml(const Packet_info &packet, const std::vector<Pid> &pid_vecto
 	ptree rootnode;
 	ptree pidnode;
 	ptree set;
+	
+	//pt.put("Stream", "Hello");
 	
 	for (int i = 0; i != NBR_PID_MAX; i++)
 	{
@@ -389,21 +393,21 @@ void	print(const std::string &inip, const int &inport, const int &interval, std:
 			std::cout << ask_for_find_the_gop << std::endl;
 			door = true;
 		}
-		for (int i = 0; i != NBR_PID_MAX; i++)
-			if (--pid_vector[i].pseudo_timeout_counter == 0)
+		/*for (int i = 0; i != NBR_PID_MAX; i++)
+			if (--pid_vector[cursor].pseudo_timeout_counter == 0)
 			{
-				pid_vector[i].exist = false;
-				pid_vector[i].pid = 0;
-				pid_vector[i].type = Nul;
-				pid_vector[i].description = 4;
-				pid_vector[i].pkts_per_pids = 0;
-				pid_vector[i].continuity_error_per_pid = 0;
-				pid_vector[i].last_continuity_counter_per_pid = 99;
-				pid_vector[i].packet_per_pid_saved_value = 0;
-				pid_vector[i].contain_pcr = false;
-				pid_vector[i].stream_type = -1;
-				pid_vector[i].switch_correction = false;
-			}
+				pid_vector[cursor].exist = false;
+				pid_vector[cursor].pid = 0;
+				pid_vector[cursor].type = Nul;
+				pid_vector[cursor].description = 4;
+				pid_vector[cursor].pkts_per_pids = 0;
+				pid_vector[cursor].continuity_error_per_pid = 0;
+				pid_vector[cursor].last_continuity_counter_per_pid = 99;
+				pid_vector[cursor].packet_per_pid_saved_value = 0;
+				pid_vector[cursor].contain_pcr = false;
+				pid_vector[cursor].stream_type = -1;
+				pid_vector[cursor].switch_correction = false;
+			}*/
 	}
 }
 
@@ -412,7 +416,7 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 								 std::string &ingroup_second, int &inport_second, std::string &inip_second, std::string &outgroup_second, 
 									int &outport_second, std::string &outip_second, int &ttl_second,
 									std::string &dest_info_file_main, std::string &dest_info_file_second, int &interval_main, int &interval_second,
-									int &main_switch_delay, int &backup_switch_delay, int &pid_flush_delay)
+									int &main_switch_delay, int &backup_switch_delay)
 {
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
@@ -442,8 +446,7 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("InMain.DelaySwitch", boost::program_options::value<int>(&main_switch_delay)->default_value(1),					"Delay for timeout switch, Normal to Backup")
 	("InSecond.DelaySwitch", boost::program_options::value<int>(&backup_switch_delay)->default_value(1),				"Delay for timeout switch, Backup to Normal")
 	("Debug.SondeOnly", boost::program_options::value<bool>(&sonde_only)->default_value(false),							"Only sonde functionalities enabled")
-	("Debug.SwitchDebug", boost::program_options::value<bool>(&switch_debug)->default_value(false),						"For debug the switch (main flux stop during gop search by secondary flux)")
-	("Shared.PidFlushDelay", boost::program_options::value<int>(&pid_flush_delay)->default_value(20),					"Every Pid who havent been uptaded before this delay are erased");
+	("Debug.SwitchDebug", boost::program_options::value<bool>(&switch_debug)->default_value(false),						"For debug the switch (main flux stop during gop search by secondary flux)");
 	
 	// Option from Command Line recuperation
 	boost::program_options::options_description description("Command Line Options");
@@ -469,11 +472,10 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("statspath_second", boost::program_options::value<std::string>(&dest_info_file_second),"Second Stats Path")
 	("interval_second", boost::program_options::value<int>(&interval_second), 				"Second Interval between each print out/file in seconds")
 	("config", boost::program_options::value<std::string>(&config_file), 					"Config File Name")
-	("main_switch_delay", boost::program_options::value<int>(&main_switch_delay),			"Delay for timeout switch, Normal to Backup")
-	("second_switch_delay", boost::program_options::value<int>(&backup_switch_delay),		"Delay for timeout switch, Backup to Normal")
-	("sonde_only", boost::program_options::value<bool>(&sonde_only),						"Only sonde functionalities enabled")
-	("switch_debug", boost::program_options::value<bool>(&switch_debug),					"For debug the switch (main flux stop during gop search by secondary flux)")
-	("pid_flush_delay", boost::program_options::value<int>(&pid_flush_delay),				"Every Pid who havent been uptaded before this delay are erased")
+	("main-switch-delay", boost::program_options::value<int>(&main_switch_delay),			"Delay for timeout switch, Normal to Backup")
+	("second-switch-delay", boost::program_options::value<int>(&backup_switch_delay),		"Delay for timeout switch, Backup to Normal")
+	("sonde-only", boost::program_options::value<bool>(&sonde_only),						"Only sonde functionalities enabled")
+	("switch-debug", boost::program_options::value<bool>(&switch_debug),					"For debug the switch (main flux stop during gop search by secondary flux)")
 	("help", "Help Screen");
 	
 	try
@@ -565,7 +567,7 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 	std::bitset<8> end_interval_audio(224); // real end 223
 	std::bitset<8> start_interval_video(223); // real start 224
 	std::bitset<8> end_interval_video(240); // real start 239
-	pid_vector[PID].pseudo_timeout_counter = packet.multiplicateur_interval;
+	//pid_vector[PID].pseudo_timeout_counter = multiplicateur_interval;
 	for (pos = 0; pos != packets_size; pos++)
 		{
 				if ((*databuf_in)[(x * packets_size) + pos] == 0 && (*databuf_in)[(x * packets_size) + pos + 1] == 0 && (*databuf_in)[(x * packets_size) + pos + 2] == 1)
@@ -689,7 +691,7 @@ void	PMT_analysis(const short &PID, const char (*databuf_in)[16384], const int &
 	
 	// skip this number of bytes (boucle_length) to get an other stream_type
 	boucle_length = 0;
-	pid_vector[PID].pseudo_timeout_counter = packet.multiplicateur_interval;
+	//pid_vector[PID].pseudo_timeout_counter = multiplicateur_interval;
 	while (17 + boucle_length < section_length)
 	{
 		table_id_extension = ((*databuf_in)[(x * packets_size) + 8] << 8) | ((*databuf_in)[(x * packets_size) + 9] & 0xff);
@@ -750,7 +752,7 @@ void	PAT_analysis(const char (*databuf_in)[16384], const int &x, const int &pack
 		pid_vector[PID].type = Psi;
 		pid_vector[PID].description = 2;
 	}
-	pid_vector[PID].pseudo_timeout_counter = packet.multiplicateur_interval;
+	//pid_vector[PID].pseudo_timeout_counter = multiplicateur_interval;
 	// PMT PID / Program Map PID, at byte 15-16
 	while (15 + (repetition * pat_repetition_size) < section_length + 6) // 6 = byte number for "section length" start (between 6-7) 
 	{
@@ -799,9 +801,6 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 			std::string description = "";
 			
 			PID = (((*databuf_in)[(x * packets_size) + 1] << 8) | (*databuf_in)[(x * packets_size) + 2]) & 0x1fff;
-			
-				std::cout << "ok\n" << PID << std::endl;
-			
 			// octet 6-7 section length, "These bytes must not exceed a value of 1021"
 			short section_length;// = (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff);
 			section_length= (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff);
@@ -813,7 +812,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 				pid_vector[PID].type = Nul;
 				pid_vector[PID].description = 4;
 				pid_vector[PID].exist = true;
-				//pid_vector[PID].pseudo_timeout_counter = packet.multiplicateur_interval;
+				//pid_vector[PID].pseudo_timeout_counter = multiplicateur_interval;
 			}
 			// DVB
 			else if (PID >= 16 && PID <= 31)
@@ -831,7 +830,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 						pid_vector[PID].type = Dvb;
 						pid_vector[PID].description = dvb_description[PID];
 					}
-					pid_vector[PID].pseudo_timeout_counter = packet.multiplicateur_interval;
+					//pid_vector[PID].pseudo_timeout_counter = multiplicateur_interval;
 				}
 			//PSI
 			else if (PID == 0) // PAT
@@ -1186,22 +1185,14 @@ int	main(int argc, char **argv)
 {
 	std::string			dest_info_file_main;
 	std::string			dest_info_file_second;
-	int					pid_flush_delay;
 	
 	packet_main.is_process_mandatory.store(true, std::memory_order_relaxed);
 	packet_second.is_process_mandatory.store(false, std::memory_order_relaxed);
 	
 	if (init(argc, argv, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main,
 						ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second,
-						dest_info_file_main, dest_info_file_second, interval_main, interval_second, main_switch_delay, backup_switch_delay,
-						pid_flush_delay) == 1)
+						dest_info_file_main, dest_info_file_second, interval_main, interval_second, main_switch_delay, backup_switch_delay) == 1)
 		return (1);
-	
-	/* Arrondie supérieur */
-	if ((packet_main.multiplicateur_interval = pid_flush_delay / interval_main) * pid_flush_delay != interval_main)
-		++packet_main.multiplicateur_interval;
-	if ((packet_second.multiplicateur_interval = pid_flush_delay / interval_second) * pid_flush_delay != interval_second)
-		++packet_second.multiplicateur_interval;
 	
 	sigset_t signal_set;
 	std::thread primary;
