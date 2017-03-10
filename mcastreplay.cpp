@@ -19,6 +19,7 @@
 #include <thread>
 #include <stdexcept>
 #include <mutex>
+#include <sstream>
 
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
@@ -26,7 +27,14 @@
 #include <boost/filesystem.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
-#include <boost/property_tree/json_parser.hpp>
+#include <boost/log/trivial.hpp>
+
+#include <boost/log/core.hpp>
+#include <boost/log/expressions.hpp>
+#include <boost/log/utility/setup/file.hpp>
+#include <boost/log/utility/setup/formatter_parser.hpp>
+#include <boost/log/sinks.hpp>
+#include <boost/log/utility/setup/common_attributes.hpp>
 
 #include "pid.hpp"
 #include "packets_general_info.hpp"
@@ -121,6 +129,35 @@ bool operator>(const std::bitset<N>& y, const std::bitset<N>& x)
     return false;
 }
 
+std::string	src1_or_src2(const Packet_info &p)
+{
+	std::string str;
+	
+	if (p.is_process_mandatory == true && packet_main.is_process_mandatory == true)
+		str = ingroup_main + " (src1)";
+	else
+		str = ingroup_second + " (src2)";
+	return (str);
+}
+
+/*bool operator==(const Packet_info &a, const Packet_info &b)
+{
+	if (a.packets_read == b.packets_read
+	&& a.octets_read == b.octets_read
+	&& a.atomic_dest_info_file == b.atomic_dest_info_file
+	&& a.max_interval_value_between_packets == b.max_interval_value_between_packets
+	&& a.max_interval_value_between_pcr == b.max_interval_value_between_pcr
+	&& a.sd_in == b.sd_in
+	&& a.sd_out ==  b.sd_out
+	&& a.datalen_out == b.datalen_out
+	&& a.packets_per_read == b.packets_per_read
+	&& a.is_process_mandatory == b.is_process_mandatory
+	&& a.multiplicateur_interval == b.multiplicateur_interval)
+	return (true);
+	else
+		return (false);
+}*/
+
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
     struct		addrinfo hints, *res = 0;
@@ -203,10 +240,7 @@ void	write_info_xml(const Packet_info &packet, const std::vector<Pid> &pid_vecto
 	ptree pt;
 	ptree rootnode;
 	ptree pidnode;
-	ptree set;
-	
-	//pt.put("Stream", "Hello");
-	
+
 	for (int i = 0; i != NBR_PID_MAX; i++)
 	{
 		if (pid_vector[i].exist == true)
@@ -232,20 +266,20 @@ void	write_info_xml(const Packet_info &packet, const std::vector<Pid> &pid_vecto
 
 	std::string dest(packet.atomic_dest_info_file);
 	
-	boost::property_tree::xml_writer_settings<char> settings('\t', 1);
+	//boost::property_tree::xml_writer_settings<char> settings('\t', 1);
 	if (packet.is_process_mandatory == true)
 	{
 		dest += "MainInfo.xml";
-		write_xml(dest, pt, std::locale(), settings);
+		write_xml(dest, pt, std::locale(), boost::property_tree::xml_writer_make_settings<std::string>('\t', 1));
 	}
 	else
 	{
 		dest += "BackupInfo.xml";
-		write_xml(dest, pt, std::locale(), settings);
+		write_xml(dest, pt, std::locale(), boost::property_tree::xml_writer_make_settings<std::string>('\t', 1));
 	}
 }
 
-void	print(const std::string &inip, const int &inport, const int &interval, std::vector<Pid> &pid_vector, Packet_info &packet)
+void	print(const std::string &ingroup, const std::string &inip, const int &inport, const int &interval, std::vector<Pid> &pid_vector, Packet_info &packet)
 {
 	std::ofstream									fd_packets;
 	std::ofstream									fd_octets;
@@ -394,6 +428,13 @@ void	print(const std::string &inip, const int &inport, const int &interval, std:
 		for (int cursor = 0; cursor != NBR_PID_MAX; cursor++)
 			if (pid_vector[cursor].exist == true && --pid_vector[cursor].pseudo_timeout_counter == 0)
 			{
+				std::stringstream		ss;
+				
+				ss << "Deleting Pid ";
+				ss << cursor;
+				ss << " for inactivity in ";
+				ss << src1_or_src2(packet);
+				BOOST_LOG_TRIVIAL(trace) << ss.str();
 				pid_vector[cursor].exist = false;
 				pid_vector[cursor].pid = 0;
 				pid_vector[cursor].type = Nul;
@@ -688,7 +729,7 @@ void	PMT_analysis(const short &PID, const char (*databuf_in)[16384], const int &
 	
 	// counter to iterate through ES info
 	short es_counter;// = 2 + descriptor_length; 
-	
+
 	// skip this number of bytes (boucle_length) to get an other stream_type
 	boucle_length = 0;
 	pid_vector[PID].pseudo_timeout_counter = packet.multiplicateur_interval;
@@ -1108,7 +1149,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
     /* Read from the socket. */
     datalen_in = sizeof(databuf_in);
 	
-	std::thread t(print, std::ref(inip), std::ref(inport), std::ref(interval), std::ref(pid_vector), std::ref(packet));
+	std::thread t(print, std::ref(ingroup), std::ref(inip), std::ref(inport), std::ref(interval), std::ref(pid_vector), std::ref(packet));
 	
 	//First time getter
 	boost::posix_time::ptime last_time = boost::posix_time::microsec_clock::local_time();
@@ -1123,8 +1164,30 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 			packet.max_interval_value_between_packets = diff.total_milliseconds();
 		last_time = actual_time;
 	  
-	  if (packet.datalen_out == -1 && packet.is_process_mandatory == true)
-		  raise(SIGUSR1);
+	  std::stringstream	ss;
+	  if (packet.datalen_out == -1)
+	  {
+		ss << "Timeout from ";
+		ss << src1_or_src2(packet);
+		if (packet.is_flux_absent == false)
+		{
+			packet.is_flux_absent = true;
+			BOOST_LOG_TRIVIAL(trace) << ss.str();
+		}
+		if (packet.is_process_mandatory == true)
+			raise(SIGUSR1);
+	  }
+	  else if (packet.datalen_out != -1 && packet.is_flux_absent == true)
+	  {
+		ss << "Flux ";
+		ss << src1_or_src2(packet);
+		ss << " recovered";
+		if (packet.is_flux_absent == true)
+		  {
+			  packet.is_flux_absent = false;
+			  BOOST_LOG_TRIVIAL(trace) << ss.str();
+		  }
+	  }
       /*if(packet.datalen_out < 0) {
         std::cerr << "Reading datagram im message error" << std::endl;
         close(packet.sd_in);
@@ -1187,7 +1250,7 @@ int	main(int argc, char **argv)
 	std::string			dest_info_file_main;
 	std::string			dest_info_file_second;
 	int					pid_flush_delay;
-	
+
 	packet_main.is_process_mandatory.store(true, std::memory_order_relaxed);
 	packet_second.is_process_mandatory.store(false, std::memory_order_relaxed);
 	
@@ -1196,7 +1259,37 @@ int	main(int argc, char **argv)
 						dest_info_file_main, dest_info_file_second, interval_main, interval_second, main_switch_delay, backup_switch_delay,
 						pid_flush_delay) == 1)
 		return (1);
-		
+	//boost::log::keywords::format test = boost::log::basic_formatter("[%TimeStamp%](%Severity%): %Message% ********** %_%");
+	
+	// Construct the sink
+    typedef boost::log::sinks::synchronous_sink< boost::log::sinks::text_ostream_backend > text_sink;
+    boost::shared_ptr< text_sink > sink = boost::make_shared< text_sink >();
+
+    // Add a stream to write log to
+    sink->locked_backend()->add_stream(
+        boost::make_shared< std::ofstream >("sample.log"));
+
+    // Register the sink in the logging core
+    boost::log::core::get()->add_sink(sink);
+	
+	boost::log::add_file_log
+	(
+	boost::log::keywords::file_name = "sample.log",
+	boost::log::keywords::rotation_size = 10 * 1024 * 1024 * 50, // 50MiB
+	boost::log::keywords::auto_flush = true,
+	boost::log::keywords::time_based_rotation = boost::log::sinks::file::rotation_at_time_point(0, 0, 0),
+	boost::log::keywords::format = "[%TimeStamp%] %Message%"
+	/*boost::log::keywords::target*/
+	);
+	boost::log::add_common_attributes();
+	
+	//boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::info);
+	
+	std::stringstream ss;
+	ss << "mcastreplay started on ";
+	ss << src1_or_src2(packet_main);
+	BOOST_LOG_TRIVIAL(trace) << ss.str();
+	
 	if ((packet_main.multiplicateur_interval = pid_flush_delay / interval_main) * pid_flush_delay != interval_main)
 		packet_main.multiplicateur_interval += 1;
 	if ((packet_second.multiplicateur_interval = pid_flush_delay / interval_second) * pid_flush_delay != interval_second)
