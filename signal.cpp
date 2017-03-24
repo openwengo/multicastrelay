@@ -36,19 +36,19 @@ void	callback_signal_handler(int sign)
 	std::stringstream ss;
 	ss << "Asking for switch to ";
 	ss << src1_or_src2(packet_second);
-	BOOST_LOG_TRIVIAL(trace) << ss.str(); 
+	BOOST_LOG_TRIVIAL(info) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 }
 
 void	force_switch_signal_handler(int sign)
 {
-	std::stringstream string_stream;
-	string_stream << "Switch from ";
-	string_stream << src1_or_src2(packet_main);
+	std::stringstream ss;
+	ss << "Switch from ";
+	ss << src1_or_src2(packet_main);
 	packet_main.is_process_mandatory = !packet_main.is_process_mandatory;
 	packet_second.is_process_mandatory = !packet_second.is_process_mandatory;
-	string_stream << " to ";
-	string_stream << src1_or_src2(packet_main);
-	BOOST_LOG_TRIVIAL(trace) << string_stream.str();
+	ss << " to ";
+	ss << src1_or_src2(packet_main);
+	BOOST_LOG_TRIVIAL(info) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 	
 	write_on_file_flux_diffuse(packet_main.is_process_mandatory);
 	ask_force_switch = false;

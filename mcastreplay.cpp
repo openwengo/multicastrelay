@@ -40,7 +40,9 @@
 #include "packets_general_info.hpp"
 
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
+#define DEFAULT_LOG_FILE "mcastreplay.log"
 #define DEFAULT_SLEEP_DURATION 60
+#define ONE_MiB	(10 * 1024 * 1024)  // 50MiB
 
 void	callback_signal_handler(int sign);
 void	timeout_signal_handler(int sign);
@@ -434,7 +436,7 @@ void	print(const std::string &ingroup, const std::string &inip, const int &inpor
 				ss << cursor;
 				ss << " for inactivity in ";
 				ss << src1_or_src2(packet);
-				BOOST_LOG_TRIVIAL(trace) << ss.str();
+				BOOST_LOG_TRIVIAL(info) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 				pid_vector[cursor].exist = false;
 				pid_vector[cursor].pid = 0;
 				pid_vector[cursor].type = Nul;
@@ -455,8 +457,9 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 								 std::string &ingroup_second, int &inport_second, std::string &inip_second, std::string &outgroup_second, 
 									int &outport_second, std::string &outip_second, int &ttl_second,
 									std::string &dest_info_file_main, std::string &dest_info_file_second, int &interval_main, int &interval_second,
-									int &main_switch_delay, int &backup_switch_delay, int &pid_flush_delay)
+									int &main_switch_delay, int &backup_switch_delay, int &pid_flush_delay, int &log_file_size, std::string &log_path)
 {
+	std::string	log_priority;
 	// Option from file info recuperation
 	boost::program_options::options_description file_description("File Options");
 	boost::program_options::variables_map file_boost_map;
@@ -486,7 +489,10 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("InSecond.DelaySwitch", boost::program_options::value<int>(&backup_switch_delay)->default_value(1),				"Delay for timeout switch, Backup to Normal")
 	("Debug.SondeOnly", boost::program_options::value<bool>(&sonde_only)->default_value(false),							"Only sonde functionalities enabled")
 	("Debug.SwitchDebug", boost::program_options::value<bool>(&switch_debug)->default_value(false),						"For debug the switch (main flux stop during gop search by secondary flux)")
-	("Shared.PidFlushDelay", boost::program_options::value<int>(&pid_flush_delay)->default_value(20),					"Timer for erase a PID if we dont receive a precise PID during this period");
+	("Debug.LogPriority", boost::program_options::value<std::string>(&log_priority)->default_value("info"),				"Filter on log priority")
+	("Shared.PidFlushDelay", boost::program_options::value<int>(&pid_flush_delay)->default_value(20),					"Timer for erase a PID if we dont receive a precise PID during this period")
+	("Shared.LogFileSize", boost::program_options::value<int>(&log_file_size)->default_value(50),						"Size max of log file in MiB")
+	("Shared.LogPath", boost::program_options::value<std::string>(&log_path)->default_value(""),						"Log file path");
 	
 	// Option from Command Line recuperation
 	boost::program_options::options_description description("Command Line Options");
@@ -517,6 +523,9 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("sonde_only", boost::program_options::value<bool>(&sonde_only),						"Only sonde functionalities enabled")
 	("switch_debug", boost::program_options::value<bool>(&switch_debug),					"For debug the switch (main flux stop during gop search by secondary flux)")
 	("pid_flush_delay", boost::program_options::value<int>(&pid_flush_delay),				"Timer for erase a PID if we dont receive a precise PID during this period")
+	("log_size", boost::program_options::value<int>(&log_file_size),						"Size max of log file in MiB")
+	("log_path", boost::program_options::value<std::string>(&log_path),						"Log file path")
+	("log_priority", boost::program_options::value<std::string>(&log_priority),				"Filter on log priority")
 	("help", "Help Screen");
 	
 	try
@@ -577,6 +586,38 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	         return(1) ;
 	   }
 	}
+	
+	//boost::log::keywords::format test = boost::log::basic_formatter("[%TimeStamp%](%Severity%): %Message% ********** %_%");
+	
+	// Construct the sink
+   /* typedef boost::log::sinks::synchronous_sink< boost::log::sinks::text_ostream_backend > text_sink;
+    boost::shared_ptr< text_sink > sink = boost::make_shared< text_sink >();
+
+    // Add a stream to write log to
+    sink->locked_backend()->add_stream(boost::make_shared< std::ofstream >("sample.log"));
+
+    // Register the sink in the logging core
+    boost::log::core::get()->add_sink(sink);*/
+	
+//	boost::log::sources::severity_logger< boost::log::trivial::severity_level > lg;
+
+	boost::log::register_simple_formatter_factory< boost::log::trivial::severity_level, char >("Severity");
+	boost::log::register_simple_formatter_factory< boost::log::trivial::severity_level, char >("Severity");
+	boost::log::add_file_log
+	(
+	boost::log::keywords::file_name = log_path + DEFAULT_LOG_FILE,
+	boost::log::keywords::rotation_size = ONE_MiB * log_file_size,
+	boost::log::keywords::auto_flush = true,
+	boost::log::keywords::time_based_rotation = boost::log::sinks::file::rotation_at_time_point(0, 0, 0),
+	boost::log::keywords::format = "<%Severity%> [%TimeStamp%] %Message% "
+	/*boost::log::keywords::target*/
+	);
+	boost::log::add_common_attributes();
+	
+	if (log_priority == "info")
+		boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::info);
+	else if (log_priority == "warning")
+		boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::warning);
 	return (0);
 }
 
@@ -1172,7 +1213,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 		if (packet.is_flux_absent == false)
 		{
 			packet.is_flux_absent = true;
-			BOOST_LOG_TRIVIAL(trace) << ss.str();
+			BOOST_LOG_TRIVIAL(warning) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 		}
 		if (packet.is_process_mandatory == true)
 			raise(SIGUSR1);
@@ -1185,7 +1226,7 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 		if (packet.is_flux_absent == true)
 		  {
 			  packet.is_flux_absent = false;
-			  BOOST_LOG_TRIVIAL(trace) << ss.str();
+			  BOOST_LOG_TRIVIAL(warning) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 		  }
 	  }
       /*if(packet.datalen_out < 0) {
@@ -1250,45 +1291,22 @@ int	main(int argc, char **argv)
 	std::string			dest_info_file_main;
 	std::string			dest_info_file_second;
 	int					pid_flush_delay;
-
+	int					log_file_size;
+	std::string			log_path;
+	
 	packet_main.is_process_mandatory.store(true, std::memory_order_relaxed);
 	packet_second.is_process_mandatory.store(false, std::memory_order_relaxed);
 	
 	if (init(argc, argv, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main,
 						ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second,
 						dest_info_file_main, dest_info_file_second, interval_main, interval_second, main_switch_delay, backup_switch_delay,
-						pid_flush_delay) == 1)
+						pid_flush_delay, log_file_size, log_path) == 1)
 		return (1);
-	//boost::log::keywords::format test = boost::log::basic_formatter("[%TimeStamp%](%Severity%): %Message% ********** %_%");
-	
-	// Construct the sink
-    typedef boost::log::sinks::synchronous_sink< boost::log::sinks::text_ostream_backend > text_sink;
-    boost::shared_ptr< text_sink > sink = boost::make_shared< text_sink >();
-
-    // Add a stream to write log to
-    sink->locked_backend()->add_stream(
-        boost::make_shared< std::ofstream >("sample.log"));
-
-    // Register the sink in the logging core
-    boost::log::core::get()->add_sink(sink);
-	
-	boost::log::add_file_log
-	(
-	boost::log::keywords::file_name = "sample.log",
-	boost::log::keywords::rotation_size = 10 * 1024 * 1024 * 50, // 50MiB
-	boost::log::keywords::auto_flush = true,
-	boost::log::keywords::time_based_rotation = boost::log::sinks::file::rotation_at_time_point(0, 0, 0),
-	boost::log::keywords::format = "[%TimeStamp%] %Message%"
-	/*boost::log::keywords::target*/
-	);
-	boost::log::add_common_attributes();
-	
-	//boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::info);
 	
 	std::stringstream ss;
 	ss << "mcastreplay started on ";
 	ss << src1_or_src2(packet_main);
-	BOOST_LOG_TRIVIAL(trace) << ss.str();
+	BOOST_LOG_TRIVIAL(info) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 	
 	if ((packet_main.multiplicateur_interval = pid_flush_delay / interval_main) * pid_flush_delay != interval_main)
 		packet_main.multiplicateur_interval += 1;

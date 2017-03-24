@@ -28,6 +28,9 @@ Command Line Options:
                             search by secondary flux)
   --pid_flush_delay arg     Timer for erase a PID if we dont receive a precise
                             PID during this period
+  --log_size arg            Size max of log file in MiB
+  --log_path arg            Log file path
+  --log_priority arg        Filter on log priority
   --help                    Help Screen
 
 File Options:
@@ -56,5 +59,8 @@ File Options:
   --Debug.SondeOnly arg (=0)       Only sonde functionalities enabled
   --Debug.SwitchDebug arg (=0)     For debug the switch (main flux stop during
                                    gop search by secondary flux)
+  --Debug.LogPriority arg (=info)  Filter on log priority
   --Shared.PidFlushDelay arg (=20) Timer for erase a PID if we dont receive a
                                    precise PID during this period
+  --Shared.LogFileSize arg (=50)   Size max of log file in MiB
+  --Shared.LogPath arg             Log file path
