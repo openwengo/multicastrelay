@@ -932,6 +932,8 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 			// Continuity Error Check
 			if (PID != 8191 && pid_vector[PID].last_continuity_counter_per_pid != 99) // PID 8191 n'a pas de continuity counter, On evite la comparaison de l'initialisation 99
 			{
+				std::stringstream	ss;
+				ss << "Continuity error detected on PID : " << PID;
 				if (((*databuf_in)[(x * packets_size) + 3] & (1u << 5))) // **1* **** Adaptation Field Control = 10 or 11
 				{
 					if (((*databuf_in)[(x * packets_size) + 3] & (1u << 4))) // **11 **** Adaptation Field Control = 11
@@ -947,6 +949,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 							//verif cc
 							if (((pid_vector[PID].last_continuity_counter_per_pid + 1 != continuity) && pid_vector[PID].last_continuity_counter_per_pid != 15) || (pid_vector[PID].last_continuity_counter_per_pid == 15 && continuity != 0))
 							{
+								BOOST_LOG_TRIVIAL(warning) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 								pid_vector[PID].continuity_error_per_pid = pid_vector[PID].continuity_error_per_pid + 1;
 								std::cout << "Adaptation field control  = 11 and Discontinuity Indicator = 0"<<std::endl;
 							}
@@ -956,6 +959,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 					{
 						if (pid_vector[PID].last_continuity_counter_per_pid != continuity) // verif =
 						{
+							BOOST_LOG_TRIVIAL(warning) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 							pid_vector[PID].continuity_error_per_pid = pid_vector[PID].continuity_error_per_pid + 1;
 							std::cout << "Adaptation field control = 10 and continuity counter not equal to precedent continuity counter"<<std::endl;
 						}
@@ -986,6 +990,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 						// verif cc
 						if (((pid_vector[PID].last_continuity_counter_per_pid + 1 != continuity) && pid_vector[PID].last_continuity_counter_per_pid != 15) || (pid_vector[PID].last_continuity_counter_per_pid == 15 && continuity != 0))
 						{
+							BOOST_LOG_TRIVIAL(warning) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 							pid_vector[PID].continuity_error_per_pid = pid_vector[PID].continuity_error_per_pid + 1;
 							std::cout << "Adaptation field control = 01 and continuity error detected " << std::endl;
 						}
