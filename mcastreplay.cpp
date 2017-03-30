@@ -932,7 +932,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 			if (PID != 8191 && pid_vector[PID].last_continuity_counter_per_pid != 99) // PID 8191 n'a pas de continuity counter, On evite la comparaison de l'initialisation 99
 			{
 				std::stringstream	ss;
-				ss << "Continuity error detected on PID : " << PID;
+				ss << "Continuity error detected on PID : " << PID << " in " << src1_or_src2(packet_main);
 				if (((*databuf_in)[(x * packets_size) + 3] & (1u << 5))) // **1* **** Adaptation Field Control = 10 or 11
 				{
 					if (((*databuf_in)[(x * packets_size) + 3] & (1u << 4))) // **11 **** Adaptation Field Control = 11
