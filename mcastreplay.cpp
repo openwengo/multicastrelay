@@ -42,7 +42,7 @@
 #define DEFAULT_FILE_CONFIG "mcastreplay.ini"
 #define DEFAULT_LOG_FILE "mcastreplay.log"
 #define DEFAULT_SLEEP_DURATION 60
-#define ONE_MiB	(10 * 1024 * 1024)  // 50MiB
+#define ONE_MiB	(1 * 1024 * 1024)  // 1MiB
 
 void	callback_signal_handler(int sign);
 void	timeout_signal_handler(int sign);
@@ -428,7 +428,7 @@ void	print(const std::string &ingroup, const std::string &inip, const int &inpor
 			door = true;
 		}
 		for (int cursor = 0; cursor != NBR_PID_MAX; cursor++)
-			if (pid_vector[cursor].exist == true && --pid_vector[cursor].pseudo_timeout_counter == 0)
+			if (pid_vector[cursor].exist == true && pid_vector[cursor].pseudo_timeout_counter-- == 0)
 			{
 				std::stringstream		ss;
 				
@@ -608,7 +608,7 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	boost::log::keywords::file_name = log_path + DEFAULT_LOG_FILE,
 	boost::log::keywords::rotation_size = ONE_MiB * log_file_size,
 	boost::log::keywords::auto_flush = true,
-	boost::log::keywords::time_based_rotation = boost::log::sinks::file::rotation_at_time_point(0, 0, 0),
+	//boost::log::keywords::time_based_rotation = boost::log::sinks::file::rotation_at_time_point(0, 0, 0),
 	boost::log::keywords::format = "<%Severity%> [%TimeStamp%] %Message% "
 	/*boost::log::keywords::target*/
 	);
@@ -719,12 +719,11 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 											(*databuf_in)[i] = From_I_Image[i];
 											std::cout << std::bitset<8>((*databuf_in)[i]) << " ";
 										}
-										//packet.packets_per_read = packet.packets_per_read - x;
-										//x = 0;
-										packet.datalen_out = packets_size * (packet.packets_per_read - x);
-										*/std::cout << std::endl << "*** End read packets with I IMAGE ***" << std::endl;
+										packet.packets_per_read = packet.packets_per_read - x;
+										x = 0;
+										packet.datalen_out = packets_size * (packet.packets_per_read - x);*/
+										std::cout << std::endl << "*** End read packets with I IMAGE ***" << std::endl;
 										std::cout << std::bitset<8>((*databuf_in)[5]) << " ";
-										//(*databuf_in)[5] = (*databuf_in)[5] | 0x80; // discontinuity indicator set to 1 
 										std::cout << std::bitset<8>((*databuf_in)[5]) << "\n";
 										std::cout << "ALL PACKET :\n";
 										len = 0;
@@ -1315,8 +1314,10 @@ int	main(int argc, char **argv)
 	
 	if ((packet_main.multiplicateur_interval = pid_flush_delay / interval_main) * pid_flush_delay != interval_main)
 		packet_main.multiplicateur_interval += 1;
+	std::cout << packet_main.multiplicateur_interval << std::endl;
 	if ((packet_second.multiplicateur_interval = pid_flush_delay / interval_second) * pid_flush_delay != interval_second)
 		packet_second.multiplicateur_interval += 1;
+	std::cout << packet_second.multiplicateur_interval << std::endl;
 		
 	std::thread primary;
 	std::thread secondary;
