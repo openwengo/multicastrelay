@@ -134,10 +134,10 @@ bool operator>(const std::bitset<N>& y, const std::bitset<N>& x)
 std::string	src1_or_src2(const Packet_info &p)
 {
 	std::string str;
-	
-	if (p.is_process_mandatory == true && packet_main.is_process_mandatory == true)
+
+	if ((p.is_process_mandatory == true && packet_main.is_process_mandatory == true) || (p.is_process_mandatory == true && packet_main.is_process_mandatory == false))
 		str = ingroup_main + " (src1)";
-	else
+	else if ((p.is_process_mandatory == false && packet_main.is_process_mandatory == false) ||(p.is_process_mandatory == false && packet_main.is_process_mandatory == true))
 		str = ingroup_second + " (src2)";
 	return (str);
 }

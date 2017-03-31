@@ -32,11 +32,15 @@ void	set_correction_switch(std::vector<Pid> &pid_vector)
 void	callback_signal_handler(int sign)
 {
 	std::cout << "callback_signal_handler" << std::endl;
-	ask_for_find_the_gop = true;
 	std::stringstream ss;
 	ss << "Asking for switch to ";
-	ss << src1_or_src2(packet_second);
+	std::cout << "main : " << packet_main.is_process_mandatory << std::endl << "second : " << packet_second.is_process_mandatory << std::endl;
+	if (packet_main.is_process_mandatory == false)
+		ss << src1_or_src2(packet_second);
+	else
+		ss << src1_or_src2(packet_second);
 	BOOST_LOG_TRIVIAL(info) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
+	ask_for_find_the_gop = true;
 }
 
 void	force_switch_signal_handler(int sign)
