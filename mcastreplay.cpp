@@ -985,23 +985,6 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
       std::cerr << "Error binding out socket" << std::endl;
       return(1);
   }
-
-    /* Disable loopback so you do not receive your own datagrams.
-    {
-    char loopch = 0;
-    if(setsockopt(sd, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&loopch, sizeof(loopch)) < 0) {
-      perror("Setting IP_MULTICAST_LOOP error");
-      close(sd);
-      exit(1);
-    } else {
-      printf("Disabling the loopback...OK.\n");
-    }
-
-    }
-
-    */
-
-     
     /* Set local interface for outbound multicast datagrams. */
     /* The IP address specified must be associated with a local, */
     /* multicast capable interface. */
@@ -1022,18 +1005,6 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
     /* Send a message to the multicast group specified by the*/
     /* groupSock sockaddr structure. */
     /*int datalen = 1024;*/
-
-
-    /* Try the re-read from the socket if the loopback is not disable
-    if(read(sd, databuf, datalen) < 0) {
-      perror("Reading datagram message error\n");
-      close(sd);
-      exit(1);
-    } else {
-      printf("Reading datagram message from client...OK\n");
-      printf("The message is: %s\n", databuf);
-    }
-    */
 
     /* Receiver/client multicast Datagram example. */
 
@@ -1075,7 +1046,6 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
     memset((char *) &localSock, 0, sizeof(localSock));
     localSock.sin_family = AF_INET;
     localSock.sin_port = htons(inport);
-    //localSock.sin_addr.s_addr = INADDR_ANY; Dangereux! Pas de filtrage!
     localSock.sin_addr.s_addr = inet_addr(ingroup.c_str());
     if(bind(packet.sd_in.load(), (struct sockaddr*)&localSock, sizeof(localSock))) {
       std::cerr << "Binding datagram socket in error" << std::endl;
@@ -1142,16 +1112,6 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 			  BOOST_LOG_TRIVIAL(warning) << "[ON AIR: " << src1_or_src2(packet_main) << "] # " << ss.str();
 		  }
 	  }
-      /*if(packet.datalen_out < 0) {
-        std::cerr << "Reading datagram im message error" << std::endl;
-        close(packet.sd_in);
-        close(packet.sd_out);
-        return(1);
-      } else {
-        //printf("Reading datagram message in ...OK.\n");
-		//std::cout << " **r: " << databuf_in << "  " <<strlen(databuf_in) << "**";
-    //    printf("The message from multicast server in is: \"%s\"\n", databuf_in);
-      }*/
 	  if (packet_monitoring(&databuf_in, last_time_pcr, pid_vector, packet) == 0)
 	  {
 		if ((packet.is_process_mandatory == true && ask_force_switch == false && switch_debug == false)
@@ -1161,14 +1121,6 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 				std::cerr << "Sending datagram message out error" << std::endl;
 		}
 	  }
-        //printf("Sending datagram message out...OK\n");
-		//std::cout << " w ";
-		/*for (int i = 0; i != strlen(databuf_in); i++)
-			std::cout << std::bitset<8>(databuf_in[i]) << " ";*/
-		//std::cout << " w: " << databuf_in << " size: " << strlen(databuf_in);
-		/*int len = strlen(databuf_in);
-		if (len > 3)
-		{*/
       }
 	return (0);
 }
