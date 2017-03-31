@@ -2,10 +2,7 @@
 #include <string>
 #include <sstream>
 
-// #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
-// #include <boost/log/expressions.hpp>
-// #include <boost/log/utility/setup/file.hpp>
 
 #include "pid.hpp"
 #include "packets_general_info.hpp"
