@@ -142,24 +142,6 @@ std::string	src1_or_src2(const Packet_info &p)
 	return (str);
 }
 
-/*bool operator==(const Packet_info &a, const Packet_info &b)
-{
-	if (a.packets_read == b.packets_read
-	&& a.octets_read == b.octets_read
-	&& a.atomic_dest_info_file == b.atomic_dest_info_file
-	&& a.max_interval_value_between_packets == b.max_interval_value_between_packets
-	&& a.max_interval_value_between_pcr == b.max_interval_value_between_pcr
-	&& a.sd_in == b.sd_in
-	&& a.sd_out ==  b.sd_out
-	&& a.datalen_out == b.datalen_out
-	&& a.packets_per_read == b.packets_per_read
-	&& a.is_process_mandatory == b.is_process_mandatory
-	&& a.multiplicateur_interval == b.multiplicateur_interval)
-	return (true);
-	else
-		return (false);
-}*/
-
 static struct addrinfo* udp_resolve_host( const char *hostname, int port, int type, int family, int flags )
 {
     struct		addrinfo hints, *res = 0;
@@ -187,53 +169,6 @@ static struct addrinfo* udp_resolve_host( const char *hostname, int port, int ty
 
     return res;
 }
-
-/*void	write_info_json(const Packet_info &packet, const std::vector<Pid> &pid_vector, const std::string &ingroup, const int &inport, const std::string &inip, const std::string &outgroup,
-						const int &outport, const std::string &outip, const int &ttl, const int &interval, const int &switch_delay)
-{
-	using boost::property_tree::ptree;
-	ptree pt;
-	ptree rootnode;
-	ptree pidnode;	
-	//pt.put("Stream", "Hello");
-	
-	rootnode.put("InGroup", ingroup);
-	rootnode.put("InIp", inip);
-	rootnode.put("InPort", inport);
-	rootnode.put("Outgroup", outgroup);
-	rootnode.put("OutIp", outip);
-	rootnode.put("OutPort", outport);
-	rootnode.put("Interval", interval);
-	rootnode.put("Switch Delay", switch_delay);
-	
-	for (int i = 0; i != NBR_PID_MAX; i++)
-	{
-		if (pid_vector[i].exist == true)
-		{
-			pidnode.put("Value", i);
-			pidnode.put("Continuity Errors", pid_vector[i].continuity_error_per_pid);
-			pidnode.put("Type", Type[pid_vector[i].type]);
-			pidnode.put("Description", Description[pid_vector[i].description]);
-			pidnode.put("Stream Type", stream_type_possibility[pid_vector[i].stream_type]);
-			rootnode.push_back(std::make_pair("PID", pidnode));
-		}
-	}
-	
-	pt.add_child("Stream", rootnode);
-
-	std::string dest(packet.atomic_dest_info_file);
-	
-	if (packet.is_process_mandatory == true)
-	{
-		dest += "MainInfo.json";
-		write_json(dest, pt);
-	}
-	else
-	{
-		dest += "BackupInfo.json";
-		write_json(dest, pt);
-	}
-}*/
 
 void	write_info_xml(const Packet_info &packet, const std::vector<Pid> &pid_vector, const std::string &ingroup, const int &inport, const std::string &inip, const std::string &outgroup,
 						const int &outport, const std::string &outip, const int &ttl, const int &interval, const int &switch_delay)
@@ -268,7 +203,6 @@ void	write_info_xml(const Packet_info &packet, const std::vector<Pid> &pid_vecto
 
 	std::string dest(packet.atomic_dest_info_file);
 	
-	//boost::property_tree::xml_writer_settings<char> settings('\t', 1);
 	if (packet.is_process_mandatory == true)
 	{
 		dest += "MainInfo.xml";
@@ -303,9 +237,7 @@ void	print(const std::string &ingroup, const std::string &inip, const int &inpor
 		if (packet.is_process_mandatory == true)
 		{
 			write_info_xml(packet_main, pid_vector_main, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main, interval_main, main_switch_delay); 
-			//write_info_json(packet_main, pid_vector_main, ingroup_main, inport_main, inip_main, outgroup_main, outport_main, outip_main, ttl_main, interval_main, main_switch_delay); 
-			write_info_xml(packet_second, pid_vector_second, ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second, interval_second, backup_switch_delay); 
-			//write_info_json(packet_second, pid_vector_second, ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second, interval_second, backup_switch_delay); 
+			write_info_xml(packet_second, pid_vector_second, ingroup_second, inport_second, inip_second, outgroup_second, outport_second, outip_second, ttl_second, interval_second, backup_switch_delay);
 			for (int cursor = 0 ; cursor != NBR_PID_MAX; cursor++)
 			{
 				if (pid_vector[cursor].exist == true)
@@ -464,7 +396,6 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	boost::program_options::options_description file_description("File Options");
 	boost::program_options::variables_map file_boost_map;
 	std::string config_file = DEFAULT_FILE_CONFIG;
-//	std::string 			temp_dest_info_file;
 	
 	file_description.add_options()
 	("InMain.Group", boost::program_options::value<std::string>(&ingroup_main)->default_value(""), 						"Group Main Entry")
@@ -553,9 +484,7 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	}
 	
 	if (ingroup_main.empty() == true || inip_main.empty() == true || inport_main == 0 || outgroup_main.empty() == true || 
-		outip_main.empty() == true || outport_main == 0 || ttl_main == 0 /*|| 
-		ingroup_second.empty() == true || inip_second.empty() == true || inport_second == 0 || outgroup_second.empty() == true || 
-		outip_second.empty() == true || outport_second == 0 || ttl_second == 0*/)
+		outip_main.empty() == true || outport_main == 0 || ttl_main == 0)
 	{
 		std::cerr << "Group, Ip, Port from In/Out and Ttl Out needed to run it" << std::endl;
 		std::cerr << description << std::endl << file_description << std::endl;
@@ -586,20 +515,6 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	         return(1) ;
 	   }
 	}
-	
-	//boost::log::keywords::format test = boost::log::basic_formatter("[%TimeStamp%](%Severity%): %Message% ********** %_%");
-	
-	// Construct the sink
-   /* typedef boost::log::sinks::synchronous_sink< boost::log::sinks::text_ostream_backend > text_sink;
-    boost::shared_ptr< text_sink > sink = boost::make_shared< text_sink >();
-
-    // Add a stream to write log to
-    sink->locked_backend()->add_stream(boost::make_shared< std::ofstream >("sample.log"));
-
-    // Register the sink in the logging core
-    boost::log::core::get()->add_sink(sink);*/
-	
-//	boost::log::sources::severity_logger< boost::log::trivial::severity_level > lg;
 
 	boost::log::register_simple_formatter_factory< boost::log::trivial::severity_level, char >("Severity");
 	boost::log::register_simple_formatter_factory< boost::log::trivial::severity_level, char >("Severity");
@@ -610,7 +525,6 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	boost::log::keywords::auto_flush = true,
 	//boost::log::keywords::time_based_rotation = boost::log::sinks::file::rotation_at_time_point(0, 0, 0),
 	boost::log::keywords::format = "<%Severity%> [%TimeStamp%] %Message% "
-	/*boost::log::keywords::target*/
 	);
 	boost::log::add_common_attributes();
 	
@@ -655,11 +569,8 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 				if ((*databuf_in)[(x * packets_size) + pos] == 0 && (*databuf_in)[(x * packets_size) + pos + 1] == 0 && (*databuf_in)[(x * packets_size) + pos + 2] == 1)
 				{
 					// prefix start code 00000000 00000000 00000001
-					//std::cout << "PID: " << PID << " stream id " << std::bitset<8>(databuf_in[(x * packets_size) + pos + 3]) << std::endl;
 					short pes_length = (((*databuf_in)[(x * packets_size) + pos + 4] << 8) | ((*databuf_in)[(x * packets_size) + pos + 5] & 0xff));
-					//std::cout << "PES packet length " << pes_length << std::endl;
 					short header_pes_len = (*databuf_in)[(x * packets_size) + pos + 8]& 0xff;
-					//std::cout << "PES header length " << header_pes_len << std::endl;
 					s_video_packet_nbr = 0;
 					s_audio_packet_nbr = 0;
 					std::bitset<8> stream_id((*databuf_in)[(x * packets_size) + pos + 3]);
@@ -678,7 +589,6 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 							{
 								if ((*databuf_in)[(x * packets_size) + pos] == 0 && (*databuf_in)[(x * packets_size) + pos + 1] == 0 && (*databuf_in)[(x * packets_size) + pos + 2] == 1)
 								{	
-							//std::cout << "NAL unit (after start code 00 00 01) " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) << " " << std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 4]) << std::endl;
 									pes_length = (((*databuf_in)[(x * packets_size) + pos + 4] << 8) | ((*databuf_in)[(x * packets_size) + pos + 5] & 0xff));
 									header_pes_len = (*databuf_in)[(x * packets_size) + pos + 8]& 0xff;
 									if (std::bitset<8>((*databuf_in)[(x * packets_size) + pos + 3]) == std::bitset<8>(103) /*0x67 mpeg4*/
@@ -701,7 +611,6 @@ int	PES_analysis(const int &packets_size, int &x, char (*databuf_in)[16384], con
 										std::cout << "FROM_I_IMAGE" << std::endl;
 										i =  x * packets_size;
 										int index = 0;
-										//std::cout << "PID: " << PID << std::endl;
 										while (i != packet.packets_per_read * packets_size)
 										{	
 											From_I_Image.append(1,(*databuf_in)[i]);
@@ -883,7 +792,7 @@ int	packet_monitoring(char (*databuf_in)[16384], boost::posix_time::ptime &last_
 			
 			PID = (((*databuf_in)[(x * packets_size) + 1] << 8) | (*databuf_in)[(x * packets_size) + 2]) & 0x1fff;
 			// octet 6-7 section length, "These bytes must not exceed a value of 1021"
-			short section_length;// = (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff);
+			short section_length;
 			section_length= (((*databuf_in)[(x * packets_size) + 6] & 0x3) << 8) | ((*databuf_in)[(x * packets_size) + 7] & 0xff);
 
 			// null packet
@@ -1248,18 +1157,6 @@ int	flux_start(std::vector<Pid>	&pid_vector, Packet_info &packet, std::string &i
 		if ((packet.is_process_mandatory == true && ask_force_switch == false && switch_debug == false)
 			|| (packet.is_process_mandatory == true && ask_force_switch == false && switch_debug == true && ask_for_find_the_gop == false))
 		{
-			/*std::cout << "SEND : " << packet.is_process_mandatory << ask_force_switch << std::endl;
-			std::cout << "DATALEN OUT : " << packet.datalen_out << std::endl;
-			std::cout << "adaptation field control need maybe to be **11**** " << std::bitset<8>(databuf_in[3]) << "\n";
-			int x = 0;
-			int i = 0;// x * 188;
-			//std::cout << "PID: " << PID << std::endl;
-			while (i != 188)
-			{
-				std::cout << std::bitset<8>(databuf_in[i]) << " ";
-				++i;
-			}
-			std::cout << "\n";*/
 			if(sendto(packet.sd_out, databuf_in, packet.datalen_out, 0, (struct sockaddr*)&groupSock, sizeof(groupSock)) < 0)
 				std::cerr << "Sending datagram message out error" << std::endl;
 		}
@@ -1314,10 +1211,8 @@ int	main(int argc, char **argv)
 	
 	if ((packet_main.multiplicateur_interval = pid_flush_delay / interval_main) * pid_flush_delay != interval_main)
 		packet_main.multiplicateur_interval += 1;
-	std::cout << packet_main.multiplicateur_interval << std::endl;
 	if ((packet_second.multiplicateur_interval = pid_flush_delay / interval_second) * pid_flush_delay != interval_second)
 		packet_second.multiplicateur_interval += 1;
-	std::cout << packet_second.multiplicateur_interval << std::endl;
 		
 	std::thread primary;
 	std::thread secondary;
