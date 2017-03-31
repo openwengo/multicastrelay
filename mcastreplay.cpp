@@ -489,7 +489,7 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("InSecond.DelaySwitch", boost::program_options::value<int>(&backup_switch_delay)->default_value(1),				"Delay for timeout switch, Backup to Normal")
 	("Debug.SondeOnly", boost::program_options::value<bool>(&sonde_only)->default_value(false),							"Only sonde functionalities enabled")
 	("Debug.SwitchDebug", boost::program_options::value<bool>(&switch_debug)->default_value(false),						"For debug the switch (main flux stop during gop search by secondary flux)")
-	("Debug.LogPriority", boost::program_options::value<std::string>(&log_priority)->default_value("info"),				"Filter on log priority")
+	("Debug.LogPriority", boost::program_options::value<std::string>(&log_priority)->default_value("info"),				"Filter on log priority : info/warning")
 	("Shared.PidFlushDelay", boost::program_options::value<int>(&pid_flush_delay)->default_value(20),					"Timer for erase a PID if we dont receive a precise PID during this period")
 	("Shared.LogFileSize", boost::program_options::value<int>(&log_file_size)->default_value(50),						"Size max of log file in MiB")
 	("Shared.LogPath", boost::program_options::value<std::string>(&log_path)->default_value(""),						"Log file path");
@@ -525,7 +525,7 @@ int	init (const int &argc, char **argv, std::string &ingroup_main, int &inport_m
 	("pid_flush_delay", boost::program_options::value<int>(&pid_flush_delay),				"Timer for erase a PID if we dont receive a precise PID during this period")
 	("log_size", boost::program_options::value<int>(&log_file_size),						"Size max of log file in MiB")
 	("log_path", boost::program_options::value<std::string>(&log_path),						"Log file path")
-	("log_priority", boost::program_options::value<std::string>(&log_priority),				"Filter on log priority")
+	("log_priority", boost::program_options::value<std::string>(&log_priority),				"Filter on log priority : info/warning")
 	("help", "Help Screen");
 	
 	try
